@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/background"
+    android:fitsSystemWindows="true"
+    android:paddingTop="48dp"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp">
+
+    <!-- HEADER -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/blue_gradient"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp">
+
+        <ImageButton
+            android:id="@+id/backButtonCarWashList"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            android:src="@android:drawable/ic_media_previous"
+            android:tint="@color/white"
+            android:contentDescription="Назад" />
+
+        <TextView
+            android:id="@+id/carWashListTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Автомойки"
+            android:textColor="@color/white"
+            android:textSize="22sp"
+            android:layout_marginStart="12dp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- ПУСТО -->
+    <TextView
+        android:id="@+id/emptyCarWashText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Автомойки не назначены"
+        android:gravity="center"
+        android:textColor="#6B7280"
+        android:textSize="16sp"
+        android:layout_marginTop="20dp"
+        android:visibility="gone" />
+
+    <!-- СПИСОК -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/carWashRecycler"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="12dp" />
+
+</LinearLayout>
