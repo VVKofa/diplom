@@ -1,0 +1,83 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.ImageButton
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+
+class ManagerCarWashListActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var titleText: TextView
+    private lateinit var emptyText: TextView
+    private lateinit var recyclerView: RecyclerView
+
+    private lateinit var db: AppDatabase
+    private lateinit var sessionManager: SessionManager
+    private lateinit var adapter: DistrictAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_manager_carwash_list)
+
+        db = AppDatabase.getDatabase(this)
+        sessionManager = SessionManager(this)
+
+        backButton = findViewById(R.id.backButtonCarWashList)
+        titleText = findViewById(R.id.carWashListTitle)
+        emptyText = findViewById(R.id.emptyCarWashText)
+        recyclerView = findViewById(R.id.carWashRecycler)
+
+        adapter = DistrictAdapter { district ->
+            val intent = Intent(this, ManagerCarWashDistrictActivity::class.java)
+            intent.putExtra("district", district)
+            startActivity(intent)
+        }
+
+        recyclerView.layoutManager = LinearLayoutManager(this)
+        recyclerView.adapter = adapter
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        loadDistricts()
+    }
+
+    private fun loadDistricts() {
+        val managerName = sessionManager.getUserName()
+
+        if (managerName.isNullOrEmpty()) {
+            emptyText.visibility = View.VISIBLE
+            recyclerView.visibility = View.GONE
+            emptyText.text = "Пользователь не найден"
+            return
+        }
+
+        titleText.text = "Округа"
+
+        lifecycleScope.launch {
+            val carWashes = db.carWashDao().getCarWashesByManager(managerName)
+            val districts = carWashes
+                .map { it.district }
+                .distinct()
+                .sorted()
+
+            if (districts.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                recyclerView.visibility = View.GONE
+                emptyText.text = "Округа не найдены"
+            } else {
+                emptyText.visibility = View.GONE
+                recyclerView.visibility = View.VISIBLE
+                adapter.submitList(districts)
+            }
+        }
+    }
+}
