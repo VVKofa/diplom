@@ -1,0 +1,144 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
+class ManagerRequestDetailsActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var titleText: TextView
+    private lateinit var dateText: TextView
+    private lateinit var statusText: TextView
+    private lateinit var carWashText: TextView
+    private lateinit var itemsText: TextView
+    private lateinit var createOrderButton: Button
+
+    private lateinit var requestRepository: RequestRepository
+    private lateinit var orderRepository: OrderRepository
+    private lateinit var notificationRepository: NotificationRepository
+    private lateinit var db: AppDatabase
+
+    private var requestId: Int = -1
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_manager_request_details)
+
+        requestRepository = RequestRepository(this)
+        orderRepository = OrderRepository(this)
+        notificationRepository = NotificationRepository(this)
+        db = AppDatabase.getDatabase(this)
+
+        backButton = findViewById(R.id.backButton)
+        titleText = findViewById(R.id.titleText)
+        dateText = findViewById(R.id.dateText)
+        statusText = findViewById(R.id.statusText)
+        carWashText = findViewById(R.id.carWashText)
+        itemsText = findViewById(R.id.itemsText)
+        createOrderButton = findViewById(R.id.createOrderButton)
+
+        requestId = intent.getIntExtra("request_id", -1)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        loadRequest()
+
+        createOrderButton.setOnClickListener {
+            lifecycleScope.launch {
+                val request = requestRepository.getRequestById(requestId)
+
+                if (request == null) {
+                    Toast.makeText(
+                        this@ManagerRequestDetailsActivity,
+                        "Заявка не найдена",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@launch
+                }
+
+                val order = orderRepository.createManagerOrderFromRequests(listOf(requestId))
+
+                if (order != null) {
+                    notificationRepository.addNotification(
+                        userRole = "director",
+                        title = "Новая заявка на согласование",
+                        message = "Территориальный менеджер сформировал заказ по заявке №$requestId",
+                        orderId = order.id,
+                        requestId = requestId
+                    )
+
+                    notificationRepository.addNotification(
+                        userRole = "admin",
+                        carWashId = request.carWashId,
+                        title = "Заявка обработана",
+                        message = "Ваша заявка №${request.id} обработана территориальным менеджером",
+                        orderId = order.id,
+                        requestId = request.id
+                    )
+
+                    Toast.makeText(
+                        this@ManagerRequestDetailsActivity,
+                        "Заказ создан",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    val intent = Intent(
+                        this@ManagerRequestDetailsActivity,
+                        ManagerOrderHistoryActivity::class.java
+                    )
+                    startActivity(intent)
+                    finish()
+                } else {
+                    Toast.makeText(
+                        this@ManagerRequestDetailsActivity,
+                        "Не удалось создать заказ",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun loadRequest() {
+        val request = requestRepository.getRequestById(requestId)
+
+        if (request == null) {
+            titleText.text = "Заявка не найдена"
+            dateText.text = ""
+            statusText.text = ""
+            carWashText.text = ""
+            itemsText.text = ""
+            createOrderButton.isEnabled = false
+            return
+        }
+
+        titleText.text = "Заявка №${request.id}"
+        dateText.text = "Дата создания: ${request.createdDate}"
+        statusText.text = "Статус: ${request.status}"
+
+        itemsText.text = request.items.joinToString("\n") {
+            "${it.productName} - ${it.quantity}"
+        }
+
+        createOrderButton.isEnabled = request.status != "Обработана"
+
+        lifecycleScope.launch {
+            val carWash = db.carWashDao().getCarWashById(request.carWashId)
+
+            carWashText.text = if (carWash != null) {
+                "Округ: ${carWash.district}\nАдрес автомойки: ${carWash.address}"
+            } else {
+                "Автомойка не найдена"
+            }
+        }
+    }
+}
