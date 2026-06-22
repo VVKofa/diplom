@@ -1,0 +1,14 @@
+package com.example.directionprogramm
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "orders")
+data class OrderEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val createdBy: String,
+    val createdDate: String,
+    val completedDate: String?,
+    val status: String
+)
