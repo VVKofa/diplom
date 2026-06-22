@@ -1,0 +1,321 @@
+package com.example.directionprogramm
+
+import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class OrderRepository(private val context: Context) {
+
+    private val prefs = context.getSharedPreferences("orders_storage", Context.MODE_PRIVATE)
+    private val gson = Gson()
+
+    private val ordersKey = "orders_key"
+    private val notificationsKey = "admin_notifications_key"
+
+    fun getAllOrders(): MutableList<OrderModel> {
+        val json = prefs.getString(ordersKey, null)
+
+        return if (json.isNullOrEmpty()) {
+            mutableListOf()
+        } else {
+            val type = object : TypeToken<MutableList<OrderModel>>() {}.type
+            gson.fromJson<MutableList<OrderModel>>(json, type) ?: mutableListOf()
+        }
+    }
+
+    fun saveAllOrders(orders: List<OrderModel>) {
+        prefs.edit()
+            .putString(ordersKey, gson.toJson(orders))
+            .apply()
+    }
+
+    fun getOrderById(orderId: Int): OrderModel? {
+        return getAllOrders().find { it.id == orderId }
+    }
+
+    fun getAdminHistory(carWashId: Int): List<OrderModel> {
+        return getAllOrders()
+            .filter { it.carWashId == carWashId }
+            .sortedByDescending { it.id }
+    }
+
+    fun getManagerHistory(): List<OrderModel> {
+        return getAllOrders()
+            .filter { it.createdByRole == "territorial_manager" }
+            .sortedByDescending { it.id }
+    }
+
+    fun getOrdersFromManagersForDirector(): List<OrderModel> {
+        return getAllOrders()
+            .filter {
+                it.createdByRole == "territorial_manager" &&
+                        it.status != "Сформирован руководителем"
+            }
+            .sortedByDescending { it.id }
+    }
+
+    fun createOrderFromAdmin(
+        items: List<OrderItemModel>,
+        carWashId: Int
+    ): OrderModel {
+        val orders = getAllOrders()
+        val newId = getNextOrderId(orders)
+
+        val preparedItems = items.map { item ->
+            item.copy(
+                carWashId = item.carWashId ?: carWashId
+            )
+        }
+
+        val newOrder = OrderModel(
+            id = newId,
+            createdDate = getCurrentDate(),
+            items = mergeItemsByProductAndCarWash(preparedItems),
+            status = "Создана администратором",
+            createdByRole = "admin",
+            carWashId = carWashId,
+            sourceRequestIds = emptyList()
+        )
+
+        orders.add(0, newOrder)
+        saveAllOrders(orders)
+
+        return newOrder
+    }
+
+    fun createAdminOrderFromCart(
+        cartItems: List<CartItem>,
+        carWashId: Int
+    ): OrderModel {
+        val orderItems = cartItems.map {
+            OrderItemModel(
+                productName = it.product.name,
+                quantity = it.quantity,
+                carWashId = carWashId
+            )
+        }
+
+        return createOrderFromAdmin(orderItems, carWashId)
+    }
+
+    fun createOrderFromTerritoryManager(
+        items: List<OrderItemModel>,
+        carWashId: Int,
+        sourceRequestIds: List<Int> = emptyList()
+    ): OrderModel {
+        val orders = getAllOrders()
+        val newId = getNextOrderId(orders)
+
+        val newOrder = OrderModel(
+            id = newId,
+            createdDate = getCurrentDate(),
+            items = mergeItemsByProductAndCarWash(items),
+            status = "Новая заявка",
+            createdByRole = "territorial_manager",
+            carWashId = carWashId,
+            sourceRequestIds = sourceRequestIds.distinct()
+        )
+
+        orders.add(0, newOrder)
+        saveAllOrders(orders)
+
+        addAdminNotification(
+            orderId = newId,
+            message = "Поступила новая заявка №$newId. Статус: Новая заявка"
+        )
+
+        return newOrder
+    }
+
+    fun createManagerOrderFromRequest(requestId: Int): OrderModel? {
+        return createManagerOrderFromRequests(listOf(requestId))
+    }
+
+    fun createManagerOrderFromRequests(requestIds: List<Int>): OrderModel? {
+        val requestRepository = RequestRepository(context)
+
+        val requests = requestIds
+            .distinct()
+            .mapNotNull { requestRepository.getRequestById(it) }
+
+        if (requests.isEmpty()) return null
+
+        val orderItems = requests.flatMap { request ->
+            request.items.map { item ->
+                OrderItemModel(
+                    productName = item.productName,
+                    quantity = item.quantity,
+                    carWashId = request.carWashId,
+                    sourceRequestId = request.id
+                )
+            }
+        }
+
+        val mainCarWashId = requests.first().carWashId
+
+        val order = createOrderFromTerritoryManager(
+            items = orderItems,
+            carWashId = mainCarWashId,
+            sourceRequestIds = requests.map { it.id }
+        )
+
+        requests.forEach { request ->
+            requestRepository.updateRequestStatus(request.id, "Обработана")
+        }
+
+        return order
+    }
+
+    fun createDirectorOrderFromManagerOrders(orderIds: List<Int>): OrderModel? {
+        val orders = getAllOrders()
+        val selectedOrders = orders.filter { orderIds.contains(it.id) }
+
+        if (selectedOrders.isEmpty()) return null
+
+        val mergedItems = selectedOrders
+            .flatMap { it.items }
+            .let { mergeItemsByProductAndCarWash(it) }
+
+        val sourceRequestIds = selectedOrders
+            .flatMap { it.sourceRequestIds.orEmpty() }
+            .distinct()
+
+        val newId = getNextOrderId(orders)
+
+        val directorOrder = OrderModel(
+            id = newId,
+            createdDate = getCurrentDate(),
+            items = mergedItems,
+            status = "Сформирован руководителем",
+            createdByRole = "director",
+            carWashId = -1,
+            sourceRequestIds = sourceRequestIds
+        )
+
+        val updatedOrders = orders.map { order ->
+            if (orderIds.contains(order.id)) {
+                order.copy(status = "Сформирован руководителем")
+            } else {
+                order
+            }
+        }.toMutableList()
+
+        updatedOrders.add(0, directorOrder)
+        saveAllOrders(updatedOrders)
+
+        return directorOrder
+    }
+
+    fun updateOrderStatus(orderId: Int, newStatus: String): Boolean {
+        val orders = getAllOrders()
+        val index = orders.indexOfFirst { it.id == orderId }
+
+        if (index == -1) return false
+
+        val oldStatus = orders[index].status
+        orders[index].status = newStatus
+
+        saveAllOrders(orders)
+
+        if (oldStatus != newStatus) {
+            addAdminNotification(
+                orderId = orderId,
+                message = "Статус заявки №$orderId изменен: $oldStatus → $newStatus"
+            )
+        }
+
+        return true
+    }
+
+    fun getTotalItemsCount(order: OrderModel): Int {
+        return order.items.sumOf { it.quantity }
+    }
+
+    private fun mergeItemsByProductAndCarWash(
+        items: List<OrderItemModel>
+    ): List<OrderItemModel> {
+        return items
+            .groupBy { item ->
+                Pair(item.carWashId, item.productName)
+            }
+            .map { group ->
+                val firstItem = group.value.first()
+
+                OrderItemModel(
+                    productName = group.key.second,
+                    quantity = group.value.sumOf { it.quantity },
+                    carWashId = group.key.first,
+                    sourceRequestId = firstItem.sourceRequestId
+                )
+            }
+            .sortedWith(
+                compareBy<OrderItemModel> { it.carWashId ?: -1 }
+                    .thenBy { it.productName }
+            )
+    }
+
+    private fun getNextOrderId(orders: List<OrderModel>): Int {
+        return if (orders.isEmpty()) {
+            1
+        } else {
+            orders.maxOf { it.id } + 1
+        }
+    }
+
+    private fun getCurrentDate(): String {
+        val formatter = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        return formatter.format(Date())
+    }
+
+    // Старые уведомления администратора оставлены для совместимости,
+    // если где-то в проекте еще используются старые методы OrderRepository.
+
+    fun getAdminNotifications(): MutableList<AdminNotification> {
+        val json = prefs.getString(notificationsKey, null)
+
+        return if (json.isNullOrEmpty()) {
+            mutableListOf()
+        } else {
+            val type = object : TypeToken<MutableList<AdminNotification>>() {}.type
+            gson.fromJson<MutableList<AdminNotification>>(json, type) ?: mutableListOf()
+        }
+    }
+
+    fun saveAdminNotifications(notifications: List<AdminNotification>) {
+        prefs.edit()
+            .putString(notificationsKey, gson.toJson(notifications))
+            .apply()
+    }
+
+    fun addAdminNotification(orderId: Int, message: String) {
+        val notifications = getAdminNotifications()
+
+        val notification = AdminNotification(
+            id = System.currentTimeMillis(),
+            orderId = orderId,
+            message = message,
+            timestamp = System.currentTimeMillis(),
+            isRead = false
+        )
+
+        notifications.add(0, notification)
+        saveAdminNotifications(notifications)
+    }
+
+    fun getUnreadAdminNotifications(): List<AdminNotification> {
+        return getAdminNotifications()
+            .filter { !it.isRead }
+            .sortedByDescending { it.timestamp }
+    }
+
+    fun markAllNotificationsAsRead() {
+        val updated = getAdminNotifications().map {
+            it.copy(isRead = true)
+        }
+
+        saveAdminNotifications(updated)
+    }
+}
