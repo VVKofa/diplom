@@ -1,0 +1,76 @@
+package com.example.directionprogramm
+
+import android.content.Context
+
+class NotificationRepository(context: Context) {
+
+    private val notificationDao = AppDatabase.getDatabase(context).notificationDao()
+
+    suspend fun addNotification(
+        userRole: String,
+        title: String,
+        message: String,
+        orderId: Int? = null,
+        requestId: Int? = null,
+        carWashId: Int? = null,
+        receiverName: String? = null
+    ) {
+        notificationDao.insertNotification(
+            NotificationEntity(
+                userRole = userRole,
+                receiverName = receiverName,
+                carWashId = carWashId,
+                title = title,
+                message = message,
+                orderId = orderId,
+                requestId = requestId
+            )
+        )
+    }
+
+    // ---------- Директор ----------
+
+    suspend fun getDirectorNotifications(): List<NotificationEntity> {
+        return notificationDao.getDirectorNotifications()
+    }
+
+    suspend fun getDirectorUnreadCount(): Int {
+        return notificationDao.getDirectorUnreadCount()
+    }
+
+    suspend fun markDirectorNotificationsAsRead() {
+        notificationDao.markDirectorNotificationsAsRead()
+    }
+
+    // ---------- Менеджер ----------
+
+    suspend fun getManagerNotifications(managerName: String): List<NotificationEntity> {
+        return notificationDao.getManagerNotifications(managerName)
+    }
+
+    suspend fun getManagerUnreadCount(managerName: String): Int {
+        return notificationDao.getManagerUnreadCount(managerName)
+    }
+
+    suspend fun markManagerNotificationsAsRead(managerName: String) {
+        notificationDao.markManagerNotificationsAsRead(managerName)
+    }
+
+    // ---------- Администратор ----------
+
+    suspend fun getAdminNotifications(carWashId: Int): List<NotificationEntity> {
+        return notificationDao.getAdminNotifications(carWashId)
+    }
+
+    suspend fun getAdminUnreadCount(carWashId: Int): Int {
+        return notificationDao.getAdminUnreadCount(carWashId)
+    }
+
+    suspend fun markAdminNotificationsAsRead(carWashId: Int) {
+        notificationDao.markAdminNotificationsAsRead(carWashId)
+    }
+
+    suspend fun markAsRead(notificationId: Int) {
+        notificationDao.markAsRead(notificationId)
+    }
+}
