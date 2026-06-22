@@ -1,0 +1,10 @@
+package com.example.directionprogramm
+
+data class Order(
+    val id: Int,
+    val createdBy: String,
+    val createdDate: String,
+    val completedDate: String?,
+    val status: String,
+    val items: List<OrderItem>
+)
