@@ -1,0 +1,21 @@
+package com.example.directionprogramm
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "users")
+data class User(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+
+    val login: String,
+    val password: String,
+    val role: String,
+    val fullName: String,
+
+    val carWashId: Int? = null,
+
+    // true — пользователь может войти
+    // false — аккаунт помечен как неактивный
+    val isActive: Boolean = true
+)
