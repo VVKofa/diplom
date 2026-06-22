@@ -1,0 +1,12 @@
+package com.example.directionprogramm
+
+data class OrderItemModel(
+    val productName: String,
+    val quantity: Int,
+
+    // Нужен для Excel: показывает, с какой автомойки пришел материал
+    val carWashId: Int? = null,
+
+    // Нужен для связи с исходной заявкой администратора
+    val sourceRequestId: Int? = null
+)
