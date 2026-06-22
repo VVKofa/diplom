@@ -1,0 +1,45 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.ImageView
+import androidx.appcompat.app.AppCompatActivity
+
+class AccountsActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageView
+    private lateinit var managersCard: View
+    private lateinit var adminsCard: View
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_accounts)
+
+        backButton = findViewById(R.id.backButton)
+        managersCard = findViewById(R.id.managersCard)
+        adminsCard = findViewById(R.id.adminsCard)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        managersCard.setOnClickListener {
+            openManagersScreen()
+        }
+
+        adminsCard.setOnClickListener {
+            openAdminsScreen()
+        }
+    }
+
+    private fun openManagersScreen() {
+        val intent = Intent(this, ManagersActivity::class.java)
+        startActivity(intent)
+    }
+
+    private fun openAdminsScreen() {
+        val intent = Intent(this, AdminsActivity::class.java)
+        startActivity(intent)
+    }
+}
