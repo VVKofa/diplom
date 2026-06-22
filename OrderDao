@@ -1,0 +1,49 @@
+package com.example.directionprogramm
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+import androidx.room.Transaction
+
+@Dao
+interface OrderDao {
+
+    @Insert
+    suspend fun insertOrder(order: OrderEntity): Long
+
+    @Insert
+    suspend fun insertOrderItems(items: List<OrderItemEntity>)
+
+    @Transaction
+    @Query("SELECT * FROM orders ORDER BY id DESC")
+    suspend fun getAllOrdersWithItems(): List<OrderWithItems>
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE createdBy = :role ORDER BY id DESC")
+    suspend fun getOrdersByCreator(role: String): List<OrderWithItems>
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE createdBy = 'admin' AND status = 'Новая заявка' ORDER BY id DESC")
+    suspend fun getAdminRequests(): List<OrderWithItems>
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE createdBy = 'admin' ORDER BY id DESC")
+    suspend fun getAdminHistory(): List<OrderWithItems>
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE createdBy = 'manager' ORDER BY id DESC")
+    suspend fun getManagerHistory(): List<OrderWithItems>
+
+    @Transaction
+    @Query("SELECT * FROM orders WHERE id = :orderId LIMIT 1")
+    suspend fun getOrderById(orderId: Int): OrderWithItems?
+
+    @Query("UPDATE orders SET status = :newStatus, completedDate = :completedDate WHERE id = :orderId")
+    suspend fun updateOrderStatus(orderId: Int, newStatus: String, completedDate: String?)
+
+    @Query("DELETE FROM orders")
+    suspend fun clearOrders()
+
+    @Query("DELETE FROM order_items")
+    suspend fun clearOrderItems()
+}
