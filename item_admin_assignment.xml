@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="10dp"
+    android:backgroundTint="@android:color/white"
+    android:elevation="4dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Имя администратора -->
+        <TextView
+            android:id="@+id/adminNameText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Иван Иванов"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#1F2937" />
+
+        <!-- Логин -->
+        <TextView
+            android:id="@+id/adminLoginText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="login123"
+            android:textSize="13sp"
+            android:textColor="#6B7280"
+            android:layout_marginTop="4dp" />
+
+        <!-- Название автомойки -->
+        <TextView
+            android:id="@+id/carWashNameText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Автомойка №1"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#10B981"
+            android:layout_marginTop="10dp" />
+
+        <!-- Адрес -->
+        <TextView
+            android:id="@+id/carWashAddressText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="г. Москва, ул. Ленина, 12"
+            android:textSize="13sp"
+            android:textColor="#374151"
+            android:layout_marginTop="2dp" />
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>
