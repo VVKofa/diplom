@@ -1,0 +1,63 @@
+package com.example.directionprogramm
+
+class CarWashRepository(private val db: AppDatabase) {
+
+    suspend fun getAllCarWashes(): List<CarWashEntity> {
+        return db.carWashDao().getAllCarWashes()
+    }
+
+    suspend fun addDefaultCarWashes() {
+        val existing = db.carWashDao().getAllCarWashes()
+
+        if (existing.isNotEmpty()) return
+
+        db.carWashDao().insertAll(
+            listOf(
+                CarWashEntity(
+                    district = "МО",
+                    address = "МО, Дмитровский городской округ, деревня Глазово, с3А",
+                    managerName = "Чапцев Кирилл"
+                ),
+                CarWashEntity(
+                    district = "МО",
+                    address = "МО, Дмитровский городской округ, деревня Лучинское",
+                    managerName = "Чапцев Кирилл"
+                ),
+                CarWashEntity(
+                    district = "САО",
+                    address = "Московская область, Долгопрудный, Лихачёвское шоссе, 1/3",
+                    managerName = "Чапцев Кирилл"
+                ),
+                CarWashEntity(
+                    district = "СВАО",
+                    address = "Москва, улица Большая Оленья улица, 20",
+                    managerName = "Чапцев Кирилл"
+                ),
+                CarWashEntity(
+                    district = "ЗАО",
+                    address = "Москва, улица Покрышкина, 5, стр. 2",
+                    managerName = "Пономарёв Михаил"
+                ),
+                CarWashEntity(
+                    district = "ЮАО",
+                    address = "Москва, Варшавское шоссе, 148А",
+                    managerName = "Пономарёв Михаил"
+                ),
+                CarWashEntity(
+                    district = "ЦАО",
+                    address = "Москва, улица Коровий Вал, 95",
+                    managerName = "Калугин Денис"
+                ),
+                CarWashEntity(
+                    district = "ВАО",
+                    address = "Москва, улица Молдагуловой, 34Б",
+                    managerName = "Калугин Денис"
+                )
+            )
+        )
+    }
+
+    suspend fun assignAdmin(adminId: Int, carWashId: Int) {
+        db.userDao().assignAdminToCarWash(adminId, carWashId)
+    }
+}
