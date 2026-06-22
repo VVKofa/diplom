@@ -1,0 +1,65 @@
+package com.example.directionprogramm
+
+import android.graphics.Color
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
+
+class CarWashAdapter : RecyclerView.Adapter<CarWashAdapter.CarWashViewHolder>() {
+
+    private val items = mutableListOf<CarWashEntity>()
+
+    fun submitList(newItems: List<CarWashEntity>) {
+        items.clear()
+        items.addAll(newItems)
+        notifyDataSetChanged()
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CarWashViewHolder {
+
+        val container = LinearLayout(parent.context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 24, 32, 24)
+
+            layoutParams = RecyclerView.LayoutParams(
+                RecyclerView.LayoutParams.MATCH_PARENT,
+                RecyclerView.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 16
+            }
+
+            setBackgroundColor(Color.WHITE)
+        }
+
+        val districtText = TextView(parent.context).apply {
+            textSize = 16f
+            setTextColor(Color.parseColor("#1F2937"))
+        }
+
+        val addressText = TextView(parent.context).apply {
+            textSize = 14f
+            setTextColor(Color.parseColor("#6B7280"))
+        }
+
+        container.addView(districtText)
+        container.addView(addressText)
+
+        return CarWashViewHolder(container, districtText, addressText)
+    }
+
+    override fun onBindViewHolder(holder: CarWashViewHolder, position: Int) {
+        val item = items[position]
+
+        holder.districtText.text = "Округ: ${item.district}"
+        holder.addressText.text = item.address
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    class CarWashViewHolder(
+        itemView: LinearLayout,
+        val districtText: TextView,
+        val addressText: TextView
+    ) : RecyclerView.ViewHolder(itemView)
+}
