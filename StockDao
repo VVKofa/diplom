@@ -1,0 +1,34 @@
+package com.example.directionprogramm
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+import androidx.room.Update
+
+@Dao
+interface StockDao {
+
+    @Insert
+    suspend fun insert(stock: StockEntity): Long
+
+    @Insert
+    suspend fun insertAll(stocks: List<StockEntity>)
+
+    @Update
+    suspend fun update(stock: StockEntity)
+
+    @Query("SELECT * FROM stocks ORDER BY productName")
+    suspend fun getAllStocks(): List<StockEntity>
+
+    @Query("SELECT * FROM stocks WHERE carWashId = :carWashId ORDER BY productName")
+    suspend fun getStocksByCarWash(carWashId: Int): List<StockEntity>
+
+    @Query("SELECT * FROM stocks WHERE carWashId IN (:carWashIds) ORDER BY carWashId, productName")
+    suspend fun getStocksByCarWashes(carWashIds: List<Int>): List<StockEntity>
+
+    @Query("SELECT COUNT(*) FROM stocks")
+    suspend fun getStocksCount(): Int
+
+    @Query("DELETE FROM stocks")
+    suspend fun clearStocks()
+}
