@@ -1,0 +1,103 @@
+package com.example.directionprogramm
+
+import android.graphics.Color
+import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.cardview.widget.CardView
+import androidx.recyclerview.widget.RecyclerView
+
+class LastOrderAdapter(
+    private val orders: List<OrderModel>,
+    private val onClick: (OrderModel) -> Unit
+) : RecyclerView.Adapter<LastOrderAdapter.OrderViewHolder>() {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): OrderViewHolder {
+        val cardView = CardView(parent.context).apply {
+            radius = 20f
+            cardElevation = 6f
+            useCompatPadding = true
+            layoutParams = RecyclerView.LayoutParams(
+                RecyclerView.LayoutParams.MATCH_PARENT,
+                RecyclerView.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = 0
+                rightMargin = 0
+                topMargin = 8
+                bottomMargin = 8
+            }
+            setCardBackgroundColor(Color.WHITE)
+        }
+
+        val container = LinearLayout(parent.context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(28, 24, 28, 24)
+        }
+
+        val titleText = TextView(parent.context).apply {
+            textSize = 19f
+            setTextColor(Color.parseColor("#1F2937"))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+
+        val dateText = TextView(parent.context).apply {
+            textSize = 15f
+            setTextColor(Color.parseColor("#374151"))
+            setPadding(0, 10, 0, 0)
+        }
+
+        val countText = TextView(parent.context).apply {
+            textSize = 15f
+            setTextColor(Color.parseColor("#374151"))
+            setPadding(0, 6, 0, 0)
+        }
+
+        val statusText = TextView(parent.context).apply {
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, 8, 0, 0)
+        }
+
+        container.addView(titleText)
+        container.addView(dateText)
+        container.addView(countText)
+        container.addView(statusText)
+        cardView.addView(container)
+
+        return OrderViewHolder(cardView, titleText, dateText, countText, statusText)
+    }
+
+    override fun onBindViewHolder(holder: OrderViewHolder, position: Int) {
+        val order = orders[position]
+        holder.titleText.text = "Заказ №${order.id}"
+        holder.dateText.text = "Дата создания: ${order.createdDate}"
+        holder.countText.text = "Товаров: ${order.items.sumOf { it.quantity }}"
+        holder.statusText.text = "Статус: ${order.status}"
+
+        holder.statusText.setTextColor(
+            when (order.status) {
+                "Новая заявка" -> Color.parseColor("#10B981")
+                "Подтверждена" -> Color.parseColor("#2563EB")
+                "В обработке" -> Color.parseColor("#F59E0B")
+                "Отклонена" -> Color.parseColor("#EF4444")
+                "Создана администратором" -> Color.parseColor("#10B981")
+                else -> Color.parseColor("#374151")
+            }
+        )
+
+        holder.itemView.setOnClickListener {
+            onClick(order)
+        }
+    }
+
+    override fun getItemCount(): Int = orders.size
+
+    class OrderViewHolder(
+        itemView: View,
+        val titleText: TextView,
+        val dateText: TextView,
+        val countText: TextView,
+        val statusText: TextView
+    ) : RecyclerView.ViewHolder(itemView)
+}
