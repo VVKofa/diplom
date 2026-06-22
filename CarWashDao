@@ -1,0 +1,36 @@
+package com.example.directionprogramm
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+import androidx.room.Update
+import androidx.room.Delete
+
+@Dao
+interface CarWashDao {
+
+    @Insert
+    suspend fun insert(carWash: CarWashEntity): Long
+
+    @Insert
+    suspend fun insertAll(carWashes: List<CarWashEntity>)
+
+    @Update
+    suspend fun update(carWash: CarWashEntity)
+
+    @Delete
+    suspend fun delete(carWash: CarWashEntity)
+
+    @Query("SELECT * FROM car_washes ORDER BY managerName, district, address")
+    suspend fun getAllCarWashes(): List<CarWashEntity>
+
+    @Query("SELECT * FROM car_washes WHERE id = :carWashId LIMIT 1")
+    suspend fun getCarWashById(carWashId: Int): CarWashEntity?
+
+    @Query("DELETE FROM car_washes")
+    suspend fun clearCarWashes()
+
+    @Query("SELECT * FROM car_washes WHERE managerName = :managerName ORDER BY district, address")
+    suspend fun getCarWashesByManager(managerName: String): List<CarWashEntity>
+
+}
