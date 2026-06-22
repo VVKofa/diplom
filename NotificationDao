@@ -1,0 +1,94 @@
+package com.example.directionprogramm
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+
+@Dao
+interface NotificationDao {
+
+    @Insert
+    suspend fun insertNotification(notification: NotificationEntity)
+
+    // ---------- Директор ----------
+
+    @Query("""
+        SELECT * FROM notifications 
+        WHERE userRole = 'director' 
+        ORDER BY createdAt DESC
+    """)
+    suspend fun getDirectorNotifications(): List<NotificationEntity>
+
+    @Query("""
+        SELECT COUNT(*) FROM notifications 
+        WHERE userRole = 'director' AND isRead = 0
+    """)
+    suspend fun getDirectorUnreadCount(): Int
+
+    @Query("""
+        UPDATE notifications 
+        SET isRead = 1 
+        WHERE userRole = 'director'
+    """)
+    suspend fun markDirectorNotificationsAsRead()
+
+    // ---------- Менеджер ----------
+
+    @Query("""
+        SELECT * FROM notifications 
+        WHERE userRole = 'manager' 
+        AND receiverName = :managerName
+        ORDER BY createdAt DESC
+    """)
+    suspend fun getManagerNotifications(managerName: String): List<NotificationEntity>
+
+    @Query("""
+        SELECT COUNT(*) FROM notifications 
+        WHERE userRole = 'manager' 
+        AND receiverName = :managerName 
+        AND isRead = 0
+    """)
+    suspend fun getManagerUnreadCount(managerName: String): Int
+
+    @Query("""
+        UPDATE notifications 
+        SET isRead = 1 
+        WHERE userRole = 'manager' 
+        AND receiverName = :managerName
+    """)
+    suspend fun markManagerNotificationsAsRead(managerName: String)
+
+    // ---------- Администратор ----------
+
+    @Query("""
+        SELECT * FROM notifications 
+        WHERE userRole = 'admin' 
+        AND carWashId = :carWashId
+        ORDER BY createdAt DESC
+    """)
+    suspend fun getAdminNotifications(carWashId: Int): List<NotificationEntity>
+
+    @Query("""
+        SELECT COUNT(*) FROM notifications 
+        WHERE userRole = 'admin' 
+        AND carWashId = :carWashId 
+        AND isRead = 0
+    """)
+    suspend fun getAdminUnreadCount(carWashId: Int): Int
+
+    @Query("""
+        UPDATE notifications 
+        SET isRead = 1 
+        WHERE userRole = 'admin' 
+        AND carWashId = :carWashId
+    """)
+    suspend fun markAdminNotificationsAsRead(carWashId: Int)
+
+    // ---------- Универсальное ----------
+
+    @Query("UPDATE notifications SET isRead = 1 WHERE id = :notificationId")
+    suspend fun markAsRead(notificationId: Int)
+
+    @Query("DELETE FROM notifications")
+    suspend fun clearNotifications()
+}
