@@ -1,0 +1,72 @@
+package com.example.directionprogramm
+
+import android.os.Bundle
+import android.widget.ImageButton
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import android.graphics.Color
+
+class OrderDetailsActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var titleText: TextView
+    private lateinit var dateText: TextView
+    private lateinit var statusText: TextView
+    private lateinit var itemsText: TextView
+
+    private lateinit var orderRepository: OrderRepository
+    private var orderId: Int = -1
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_order_details)
+
+        orderRepository = OrderRepository(this)
+
+        backButton = findViewById(R.id.backButton)
+        titleText = findViewById(R.id.titleText)
+        dateText = findViewById(R.id.dateText)
+        statusText = findViewById(R.id.statusText)
+        itemsText = findViewById(R.id.itemsText)
+
+        orderId = intent.getIntExtra("order_id", -1)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        loadOrder()
+    }
+
+    private fun loadOrder() {
+        val order = orderRepository.getOrderById(orderId)
+
+        if (order == null) {
+            titleText.text = "Заказ не найден"
+            dateText.text = ""
+            statusText.text = ""
+            itemsText.text = ""
+            return
+        }
+
+        titleText.text = "Заказ №${order.id}"
+        dateText.text = "Дата создания: ${order.createdDate}"
+
+        // красивый статус
+        statusText.text = order.status
+        statusText.setTextColor(Color.WHITE)
+        statusText.setPadding(24, 10, 24, 10)
+        statusText.background = resources.getDrawable(R.drawable.blue_gradient, null)
+
+        // товары
+        val itemsFormatted = order.items.joinToString("\n\n") {
+            "• ${it.productName}\nКоличество: ${it.quantity}"
+        }
+
+        itemsText.text = itemsFormatted
+
+        // добавим итог
+        val total = order.items.sumOf { it.quantity }
+        itemsText.append("\n\nВсего товаров: $total")
+    }
+}
