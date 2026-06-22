@@ -1,0 +1,163 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
+class ProfileActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var logoutButton: Button
+
+    private lateinit var profileUserNameText: TextView
+    private lateinit var profileUserRoleText: TextView
+    private lateinit var profileUserLoginText: TextView
+
+    private lateinit var adminProfileBlock: View
+    private lateinit var managerProfileBlock: View
+
+    private lateinit var profileDistrictText: TextView
+    private lateinit var profileAddressText: TextView
+    private lateinit var profileManagerText: TextView
+
+    private lateinit var managerCarWashesCountText: TextView
+    private lateinit var managerCarWashesListText: TextView
+
+    private lateinit var sessionManager: SessionManager
+    private lateinit var db: AppDatabase
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_profile)
+
+        sessionManager = SessionManager(this)
+        db = AppDatabase.getDatabase(this)
+
+        backButton = findViewById(R.id.backButtonProfile)
+        logoutButton = findViewById(R.id.logoutButtonProfile)
+
+        profileUserNameText = findViewById(R.id.profileUserNameText)
+        profileUserRoleText = findViewById(R.id.profileUserRoleText)
+        profileUserLoginText = findViewById(R.id.profileUserLoginText)
+
+        adminProfileBlock = findViewById(R.id.adminProfileBlock)
+        managerProfileBlock = findViewById(R.id.managerProfileBlock)
+
+        profileDistrictText = findViewById(R.id.profileDistrictText)
+        profileAddressText = findViewById(R.id.profileAddressText)
+        profileManagerText = findViewById(R.id.profileManagerText)
+
+        managerCarWashesCountText = findViewById(R.id.managerCarWashesCountText)
+        managerCarWashesListText = findViewById(R.id.managerCarWashesListText)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        logoutButton.setOnClickListener {
+            sessionManager.logout()
+
+            val intent = Intent(this, MainActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
+            finish()
+        }
+
+        loadProfile()
+    }
+
+    private fun loadProfile() {
+        val userName = sessionManager.getUserName() ?: "Пользователь"
+        val login = sessionManager.getUserLogin() ?: "—"
+        val role = sessionManager.getUserRole() ?: "—"
+
+        profileUserNameText.text = userName
+        profileUserLoginText.text = "Логин: $login"
+
+        when (role) {
+            "admin" -> {
+                profileUserRoleText.text = "Администратор"
+                adminProfileBlock.visibility = View.VISIBLE
+                managerProfileBlock.visibility = View.GONE
+                loadAdminCarWash()
+            }
+
+            "manager" -> {
+                profileUserRoleText.text = "Территориальный менеджер"
+                adminProfileBlock.visibility = View.GONE
+                managerProfileBlock.visibility = View.VISIBLE
+                loadManagerCarWashes(userName)
+            }
+
+            "director" -> {
+                profileUserRoleText.text = "Руководитель"
+                adminProfileBlock.visibility = View.GONE
+                managerProfileBlock.visibility = View.VISIBLE
+                loadDirectorInfo()
+            }
+
+            else -> {
+                profileUserRoleText.text = role
+                adminProfileBlock.visibility = View.GONE
+                managerProfileBlock.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun loadAdminCarWash() {
+        val carWashId = sessionManager.getCarWashId()
+
+        if (carWashId == null) {
+            profileDistrictText.text = "Округ: автомойка не назначена"
+            profileAddressText.text = "Адрес: —"
+            profileManagerText.text = "Территориальный менеджер: —"
+            return
+        }
+
+        lifecycleScope.launch {
+            val carWash = db.carWashDao().getCarWashById(carWashId)
+
+            if (carWash == null) {
+                profileDistrictText.text = "Округ: данные не найдены"
+                profileAddressText.text = "Адрес: —"
+                profileManagerText.text = "Территориальный менеджер: —"
+            } else {
+                profileDistrictText.text = "Округ: ${carWash.district}"
+                profileAddressText.text = "Адрес: ${carWash.address}"
+                profileManagerText.text = "Территориальный менеджер: ${carWash.managerName}"
+            }
+        }
+    }
+
+    private fun loadManagerCarWashes(managerName: String) {
+        lifecycleScope.launch {
+            val carWashes = db.carWashDao().getCarWashesByManager(managerName)
+
+            managerCarWashesCountText.text = "Количество автомоек: ${carWashes.size}"
+
+            managerCarWashesListText.text = if (carWashes.isEmpty()) {
+                "Автомойки не назначены"
+            } else {
+                carWashes.joinToString("\n\n") {
+                    "• ${it.district}\n${it.address}"
+                }
+            }
+        }
+    }
+
+    private fun loadDirectorInfo() {
+        lifecycleScope.launch {
+            val carWashes = db.carWashDao().getAllCarWashes()
+
+            managerCarWashesCountText.text = "Количество автомоек: ${carWashes.size}"
+            managerCarWashesListText.text = ""
+            managerCarWashesListText.visibility = View.GONE
+        }
+    }
+}
