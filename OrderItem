@@ -1,0 +1,6 @@
+package com.example.directionprogramm
+
+data class OrderItem(
+    val productName: String,
+    val quantity: Int
+)
