@@ -1,0 +1,12 @@
+package com.example.directionprogramm
+
+data class ExcelOrderRow(
+    val district: String,
+    val managerName: String,
+    val orderId: Int,
+    val createdDate: String,
+    val carWashAddress: String,
+    val productName: String,
+    val quantity: Int,
+    val status: String
+)
