@@ -1,0 +1,80 @@
+package com.example.directionprogramm
+
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
+
+class AccountAdapter(
+    private var users: List<User>,
+    private val isAdminList: Boolean,
+    private val onEditClick: (User) -> Unit,
+    private val onStatusClick: (User) -> Unit
+) : RecyclerView.Adapter<AccountAdapter.AccountViewHolder>() {
+
+    class AccountViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        val fullNameText: TextView = itemView.findViewById(R.id.fullNameText)
+        val loginText: TextView = itemView.findViewById(R.id.loginText)
+        val territoryText: TextView = itemView.findViewById(R.id.territoryText)
+        val carWashText: TextView = itemView.findViewById(R.id.carWashText)
+        val statusText: TextView = itemView.findViewById(R.id.statusText)
+        val editButton: TextView = itemView.findViewById(R.id.editButton)
+        val statusButton: TextView = itemView.findViewById(R.id.statusButton)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AccountViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_account, parent, false)
+        return AccountViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: AccountViewHolder, position: Int) {
+        val user = users[position]
+
+        holder.fullNameText.text = user.fullName
+        holder.loginText.text = "Логин: ${user.login}"
+
+        if (user.role == "manager") {
+            holder.territoryText.text = "Роль: территориальный менеджер"
+        } else {
+            holder.territoryText.text = "Роль: администратор"
+        }
+
+        if (isAdminList) {
+            holder.carWashText.visibility = View.VISIBLE
+            holder.carWashText.text = if (user.carWashId != null) {
+                "ID автомойки: ${user.carWashId}"
+            } else {
+                "Автомойка: не назначена"
+            }
+        } else {
+            holder.carWashText.visibility = View.GONE
+        }
+
+        if (user.isActive) {
+            holder.statusText.text = "Статус: активен"
+            holder.statusText.setTextColor(0xFF1F9D72.toInt())
+            holder.statusButton.text = "Отключить"
+        } else {
+            holder.statusText.text = "Статус: неактивен"
+            holder.statusText.setTextColor(0xFF6B7280.toInt())
+            holder.statusButton.text = "Активировать"
+        }
+
+        holder.editButton.setOnClickListener {
+            onEditClick(user)
+        }
+
+        holder.statusButton.setOnClickListener {
+            onStatusClick(user)
+        }
+    }
+
+    override fun getItemCount(): Int = users.size
+
+    fun updateData(newUsers: List<User>) {
+        users = newUsers
+        notifyDataSetChanged()
+    }
+}
