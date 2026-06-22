@@ -1,0 +1,45 @@
+
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@color/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageButton
+        android:id="@+id/backButtonCarWash"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@android:drawable/ic_media_previous"
+        android:background="@android:color/transparent"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Автомойки"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:textColor="#1F2937"
+        android:layout_marginTop="12dp"
+        android:layout_marginBottom="8dp"/>
+
+    <Button
+        android:id="@+id/addCarWashButton"
+        android:text="Добавить автомойку"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
+    <TextView
+        android:id="@+id/emptyCarWashText"
+        android:text="Нет автомоек"
+        android:visibility="gone"
+        android:gravity="center"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/carWashRecycler"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+</LinearLayout>
