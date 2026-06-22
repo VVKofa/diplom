@@ -1,0 +1,193 @@
+package com.example.directionprogramm
+
+import android.content.Context
+import android.net.Uri
+
+class ExcelExporter(private val context: Context) {
+
+    fun exportOrdersToExcel(uri: Uri, rows: List<ExcelOrderRow>) {
+        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+            val xml = createExcelXml(rows)
+            outputStream.write(xml.toByteArray(Charsets.UTF_8))
+            outputStream.flush()
+        }
+    }
+
+    private fun createExcelXml(rows: List<ExcelOrderRow>): String {
+        val groupedRows = if (rows.isEmpty()) {
+            mapOf(
+                "Нет данных" to listOf(
+                    ExcelOrderRow(
+                        district = "Нет данных",
+                        managerName = "Не указан",
+                        orderId = 0,
+                        createdDate = "",
+                        carWashAddress = "",
+                        productName = "Нет заказов для выгрузки",
+                        quantity = 0,
+                        status = ""
+                    )
+                )
+            )
+        } else {
+            rows.groupBy { it.district.ifBlank { "Без округа" } }.toSortedMap()
+        }
+
+        val worksheets = groupedRows.entries.joinToString("\n") { entry ->
+            createWorksheet(
+                district = entry.key,
+                rows = entry.value
+            )
+        }
+
+        return """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <?mso-application progid="Excel.Sheet"?>
+            <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+                      xmlns:o="urn:schemas-microsoft-com:office:office"
+                      xmlns:x="urn:schemas-microsoft-com:office:excel"
+                      xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+                      xmlns:html="http://www.w3.org/TR/REC-html40">
+
+                <Styles>
+                    <Style ss:ID="Default" ss:Name="Normal">
+                        <Alignment ss:Vertical="Center"/>
+                        <Font ss:FontName="Calibri" ss:Size="11"/>
+                    </Style>
+
+                    <Style ss:ID="TitleStyle">
+                        <Font ss:FontName="Calibri" ss:Size="14" ss:Bold="1"/>
+                    </Style>
+
+                    <Style ss:ID="HeaderStyle">
+                        <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+                        <Interior ss:Color="#DFF3FF" ss:Pattern="Solid"/>
+                        <Borders>
+                            <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                        </Borders>
+                    </Style>
+
+                    <Style ss:ID="CellStyle">
+                        <Borders>
+                            <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                        </Borders>
+                    </Style>
+
+                    <Style ss:ID="StatusStyle">
+                        <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1" ss:Color="#10B981"/>
+                        <Borders>
+                            <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>
+                            <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>
+                        </Borders>
+                    </Style>
+                </Styles>
+
+                $worksheets
+
+            </Workbook>
+        """.trimIndent()
+    }
+
+    private fun createWorksheet(district: String, rows: List<ExcelOrderRow>): String {
+        val managerName = rows.firstOrNull()?.managerName ?: "Не указан"
+
+        val tableRows = buildString {
+            append(
+                """
+                <Row>
+                    <Cell ss:MergeAcross="5" ss:StyleID="TitleStyle">
+                        <Data ss:Type="String">Округ: ${escapeXml(district)}</Data>
+                    </Cell>
+                </Row>
+                """.trimIndent()
+            )
+
+            append(
+                """
+                <Row>
+                    <Cell ss:MergeAcross="5" ss:StyleID="TitleStyle">
+                        <Data ss:Type="String">Территориальный менеджер: ${escapeXml(managerName)}</Data>
+                    </Cell>
+                </Row>
+                """.trimIndent()
+            )
+
+            append("<Row></Row>")
+
+            append(
+                """
+                <Row>
+                    <Cell ss:StyleID="HeaderStyle"><Data ss:Type="String">№ заказа</Data></Cell>
+                    <Cell ss:StyleID="HeaderStyle"><Data ss:Type="String">Дата создания</Data></Cell>
+                    <Cell ss:StyleID="HeaderStyle"><Data ss:Type="String">Автомойка</Data></Cell>
+                    <Cell ss:StyleID="HeaderStyle"><Data ss:Type="String">Материал</Data></Cell>
+                    <Cell ss:StyleID="HeaderStyle"><Data ss:Type="String">Количество</Data></Cell>
+                    <Cell ss:StyleID="HeaderStyle"><Data ss:Type="String">Статус</Data></Cell>
+                </Row>
+                """.trimIndent()
+            )
+
+            rows.forEach { item ->
+                append(
+                    """
+                    <Row>
+                        <Cell ss:StyleID="CellStyle"><Data ss:Type="Number">${item.orderId}</Data></Cell>
+                        <Cell ss:StyleID="CellStyle"><Data ss:Type="String">${escapeXml(item.createdDate)}</Data></Cell>
+                        <Cell ss:StyleID="CellStyle"><Data ss:Type="String">${escapeXml(item.carWashAddress)}</Data></Cell>
+                        <Cell ss:StyleID="CellStyle"><Data ss:Type="String">${escapeXml(item.productName)}</Data></Cell>
+                        <Cell ss:StyleID="CellStyle"><Data ss:Type="Number">${item.quantity}</Data></Cell>
+                        <Cell ss:StyleID="StatusStyle"><Data ss:Type="String">${escapeXml(item.status)}</Data></Cell>
+                    </Row>
+                    """.trimIndent()
+                )
+            }
+        }
+
+        return """
+            <Worksheet ss:Name="${safeSheetName(district)}">
+                <Table>
+                    <Column ss:Width="90"/>
+                    <Column ss:Width="120"/>
+                    <Column ss:Width="260"/>
+                    <Column ss:Width="230"/>
+                    <Column ss:Width="90"/>
+                    <Column ss:Width="180"/>
+
+                    $tableRows
+                </Table>
+            </Worksheet>
+        """.trimIndent()
+    }
+
+    private fun safeSheetName(name: String): String {
+        return escapeXml(
+            name
+                .replace("[", "")
+                .replace("]", "")
+                .replace("*", "")
+                .replace("?", "")
+                .replace("/", "")
+                .replace("\\", "")
+                .replace(":", "")
+                .take(31)
+                .ifBlank { "Округ" }
+        )
+    }
+
+    private fun escapeXml(value: String): String {
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+    }
+}
