@@ -1,0 +1,72 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.ImageButton
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+
+class OrderActivity : AppCompatActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_order)
+
+        val backButton = findViewById<ImageButton>(R.id.backButton)
+        val addToCartButton = findViewById<Button>(R.id.addToCartButton)
+        val openCartButton = findViewById<Button>(R.id.openCartButton)
+
+        val item1 = findViewById<CheckBox>(R.id.item1)
+        val item2 = findViewById<CheckBox>(R.id.item2)
+        val item3 = findViewById<CheckBox>(R.id.item3)
+        val item4 = findViewById<CheckBox>(R.id.item4)
+        val item5 = findViewById<CheckBox>(R.id.item5)
+        val item6 = findViewById<CheckBox>(R.id.item6)
+        val item7 = findViewById<CheckBox>(R.id.item7)
+        val item8 = findViewById<CheckBox>(R.id.item8)
+        val item9 = findViewById<CheckBox>(R.id.item9)
+        val item10 = findViewById<CheckBox>(R.id.item10)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        addToCartButton.setOnClickListener {
+            val selectedItems = listOf(item1, item2, item3, item4, item5, item6, item7, item8, item9, item10)
+
+            var addedCount = 0
+
+            for (checkBox in selectedItems) {
+                if (checkBox.isChecked) {
+
+                    val existingItem = CartManager.cartItems.find {
+                        it.product.name == checkBox.text.toString()
+                    }
+
+                    if (existingItem == null) {
+                        CartManager.cartItems.add(
+                            CartItem(
+                                product = Product(checkBox.text.toString()),
+                                quantity = 1
+                            )
+                        )
+                    } else {
+                        existingItem.quantity++
+                    }
+                }
+            }
+
+            if (addedCount > 0) {
+                Toast.makeText(this, "Товар добавлен в корзину", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "Выберите хотя бы один товар", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        openCartButton.setOnClickListener {
+            startActivity(Intent(this, CartActivity::class.java))
+        }
+    }
+}
