@@ -1,0 +1,376 @@
+package com.example.directionprogramm
+
+import android.app.AlertDialog
+import android.graphics.Color
+import android.os.Bundle
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Button
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+
+class DirectorCarWashesActivity : AppCompatActivity() {
+
+    private lateinit var recycler: RecyclerView
+    private lateinit var addButton: Button
+    private lateinit var backButton: ImageButton
+    private lateinit var emptyText: TextView
+
+    private lateinit var db: AppDatabase
+    private lateinit var adapter: DirectorCarWashAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_director_car_washes)
+
+        db = AppDatabase.getDatabase(this)
+
+        recycler = findViewById(R.id.carWashRecycler)
+        addButton = findViewById(R.id.addCarWashButton)
+        backButton = findViewById(R.id.backButtonCarWash)
+        emptyText = findViewById(R.id.emptyCarWashText)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        addButton.setOnClickListener {
+            showCarWashDialog(null)
+        }
+
+        adapter = DirectorCarWashAdapter(
+            onEdit = { carWash ->
+                showCarWashDialog(carWash)
+            },
+            onDelete = { carWash ->
+                confirmDelete(carWash)
+            }
+        )
+
+        recycler.layoutManager = LinearLayoutManager(this)
+        recycler.adapter = adapter
+
+        setupSwipeToDelete()
+        loadCarWashes()
+    }
+
+    private fun loadCarWashes() {
+        lifecycleScope.launch {
+            val carWashes = db.carWashDao().getAllCarWashes()
+
+            if (carWashes.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                recycler.visibility = View.GONE
+            } else {
+                emptyText.visibility = View.GONE
+                recycler.visibility = View.VISIBLE
+                adapter.submitList(carWashes)
+            }
+        }
+    }
+
+    private fun showCarWashDialog(carWash: CarWashEntity?) {
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 20, 40, 10)
+        }
+
+        val districtInput = EditText(this).apply {
+            hint = "Округ"
+            setText(carWash?.district ?: "")
+        }
+
+        val addressInput = EditText(this).apply {
+            hint = "Адрес"
+            setText(carWash?.address ?: "")
+        }
+
+        val managerInput = EditText(this).apply {
+            hint = "Территориальный менеджер"
+            setText(carWash?.managerName ?: "")
+        }
+
+        container.addView(districtInput)
+        container.addView(addressInput)
+        container.addView(managerInput)
+
+        AlertDialog.Builder(this)
+            .setTitle(if (carWash == null) "Добавить автомойку" else "Редактировать автомойку")
+            .setView(container)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val district = districtInput.text.toString().trim()
+                val address = addressInput.text.toString().trim()
+                val managerName = managerInput.text.toString().trim()
+
+                if (district.isEmpty() || address.isEmpty()) {
+                    Toast.makeText(this, "Заполните округ и адрес", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                lifecycleScope.launch {
+                    if (carWash == null) {
+                        db.carWashDao().insert(
+                            CarWashEntity(
+                                district = district,
+                                address = address,
+                                managerName = managerName
+                            )
+                        )
+
+                        Toast.makeText(
+                            this@DirectorCarWashesActivity,
+                            "Автомойка добавлена",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        db.carWashDao().update(
+                            carWash.copy(
+                                district = district,
+                                address = address,
+                                managerName = managerName
+                            )
+                        )
+
+                        Toast.makeText(
+                            this@DirectorCarWashesActivity,
+                            "Автомойка изменена",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+
+                    loadCarWashes()
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    private fun confirmDelete(carWash: CarWashEntity, restorePosition: Int? = null) {
+        AlertDialog.Builder(this)
+            .setTitle("Удалить автомойку?")
+            .setMessage("${carWash.district}\n${carWash.address}")
+            .setPositiveButton("Удалить") { _, _ ->
+                lifecycleScope.launch {
+                    db.carWashDao().delete(carWash)
+
+                    Toast.makeText(
+                        this@DirectorCarWashesActivity,
+                        "Автомойка удалена",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    loadCarWashes()
+                }
+            }
+            .setNegativeButton("Отмена") { _, _ ->
+                restorePosition?.let {
+                    adapter.notifyItemChanged(it)
+                }
+            }
+            .setOnCancelListener {
+                restorePosition?.let {
+                    adapter.notifyItemChanged(it)
+                }
+            }
+            .show()
+    }
+
+    private fun setupSwipeToDelete() {
+        val helper = ItemTouchHelper(
+            object : ItemTouchHelper.SimpleCallback(
+                0,
+                ItemTouchHelper.LEFT
+            ) {
+                override fun onMove(
+                    recyclerView: RecyclerView,
+                    viewHolder: RecyclerView.ViewHolder,
+                    target: RecyclerView.ViewHolder
+                ): Boolean {
+                    return false
+                }
+
+                override fun onSwiped(
+                    viewHolder: RecyclerView.ViewHolder,
+                    direction: Int
+                ) {
+                    val position = viewHolder.bindingAdapterPosition
+
+                    if (position == RecyclerView.NO_POSITION) {
+                        return
+                    }
+
+                    val carWash = adapter.getItem(position)
+                    confirmDelete(carWash, position)
+                }
+            }
+        )
+
+        helper.attachToRecyclerView(recycler)
+    }
+
+    inner class DirectorCarWashAdapter(
+        private val onEdit: (CarWashEntity) -> Unit,
+        private val onDelete: (CarWashEntity) -> Unit
+    ) : RecyclerView.Adapter<DirectorCarWashAdapter.CarWashViewHolder>() {
+
+        private val items = mutableListOf<CarWashEntity>()
+
+        fun submitList(newItems: List<CarWashEntity>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
+
+        fun getItem(position: Int): CarWashEntity {
+            return items[position]
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CarWashViewHolder {
+            val card = CardView(parent.context).apply {
+                radius = 20f
+                cardElevation = 6f
+                useCompatPadding = true
+                setCardBackgroundColor(Color.WHITE)
+
+                layoutParams = RecyclerView.LayoutParams(
+                    RecyclerView.LayoutParams.MATCH_PARENT,
+                    RecyclerView.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    leftMargin = 8
+                    rightMargin = 8
+                    topMargin = 8
+                    bottomMargin = 8
+                }
+            }
+
+            val container = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.TOP
+                setPadding(24, 20, 24, 20)
+            }
+
+            val textContainer = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+
+            val districtText = TextView(parent.context).apply {
+                textSize = 17f
+                setTextColor(Color.parseColor("#1F2937"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            val addressText = TextView(parent.context).apply {
+                textSize = 15f
+                setTextColor(Color.parseColor("#374151"))
+                setPadding(0, 6, 0, 0)
+                setLineSpacing(6f, 1f)
+            }
+
+            val managerText = TextView(parent.context).apply {
+                textSize = 14f
+                setTextColor(Color.parseColor("#6B7280"))
+                setPadding(0, 8, 0, 0)
+            }
+
+            val buttonsContainer = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    leftMargin = 12
+                }
+            }
+
+            val editButton = ImageButton(parent.context).apply {
+                setImageResource(R.drawable.ic_edit)
+                background = parent.context.getDrawable(R.drawable.circle_button_bg)
+                setPadding(18, 18, 18, 18)
+                contentDescription = "Редактировать"
+
+                layoutParams = LinearLayout.LayoutParams(82, 82).apply {
+                    bottomMargin = 10
+                }
+            }
+
+            val deleteButton = ImageButton(parent.context).apply {
+                setImageResource(R.drawable.ic_delete)
+                background = parent.context.getDrawable(R.drawable.circle_button_bg)
+                setPadding(18, 18, 18, 18)
+                contentDescription = "Удалить"
+
+                layoutParams = LinearLayout.LayoutParams(82, 82)
+            }
+
+            textContainer.addView(districtText)
+            textContainer.addView(addressText)
+            textContainer.addView(managerText)
+
+            buttonsContainer.addView(editButton)
+            buttonsContainer.addView(deleteButton)
+
+            container.addView(textContainer)
+            container.addView(buttonsContainer)
+
+            card.addView(container)
+
+            return CarWashViewHolder(
+                card,
+                districtText,
+                addressText,
+                managerText,
+                editButton,
+                deleteButton
+            )
+        }
+
+        override fun onBindViewHolder(holder: CarWashViewHolder, position: Int) {
+            val carWash = items[position]
+
+            holder.districtText.text = carWash.district
+            holder.addressText.text = carWash.address
+
+            holder.managerText.text = if (carWash.managerName.isBlank()) {
+                "Менеджер: не назначен"
+            } else {
+                "Менеджер: ${carWash.managerName}"
+            }
+
+            holder.editButton.setOnClickListener {
+                onEdit(carWash)
+            }
+
+            holder.deleteButton.setOnClickListener {
+                onDelete(carWash)
+            }
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        inner class CarWashViewHolder(
+            itemView: View,
+            val districtText: TextView,
+            val addressText: TextView,
+            val managerText: TextView,
+            val editButton: ImageButton,
+            val deleteButton: ImageButton
+        ) : RecyclerView.ViewHolder(itemView)
+    }
+}
