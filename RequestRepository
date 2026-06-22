@@ -1,0 +1,81 @@
+package com.example.directionprogramm
+
+import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class RequestRepository(private val context: Context) {
+
+    private val prefs = context.getSharedPreferences("requests_storage", Context.MODE_PRIVATE)
+    private val gson = Gson()
+
+    private val requestsKey = "requests_key"
+
+    fun getAllRequests(): MutableList<RequestModel> {
+        val json = prefs.getString(requestsKey, null)
+
+        return if (json.isNullOrEmpty()) {
+            mutableListOf()
+        } else {
+            val type = object : TypeToken<MutableList<RequestModel>>() {}.type
+            gson.fromJson<MutableList<RequestModel>>(json, type) ?: mutableListOf()
+        }
+    }
+
+    fun saveAllRequests(requests: List<RequestModel>) {
+        prefs.edit()
+            .putString(requestsKey, gson.toJson(requests))
+            .apply()
+    }
+
+    fun getAdminRequests(): List<RequestModel> {
+        return getAllRequests().sortedByDescending { it.id }
+    }
+
+    fun getRequestsByCarWash(carWashId: Int): List<RequestModel> {
+        return getAllRequests()
+            .filter { it.carWashId == carWashId }
+            .sortedByDescending { it.id }
+    }
+
+    fun getRequestById(requestId: Int): RequestModel? {
+        return getAllRequests().find { it.id == requestId }
+    }
+
+    fun createRequest(items: List<RequestItemModel>, carWashId: Int): RequestModel {
+        val requests = getAllRequests()
+        val newId = if (requests.isEmpty()) 1 else requests.maxOf { it.id } + 1
+
+        val request = RequestModel(
+            id = newId,
+            createdDate = getCurrentDate(),
+            items = items,
+            status = "Новая",
+            carWashId = carWashId
+        )
+
+        requests.add(0, request)
+        saveAllRequests(requests)
+
+        return request
+    }
+
+    fun updateRequestStatus(requestId: Int, newStatus: String): Boolean {
+        val requests = getAllRequests()
+        val index = requests.indexOfFirst { it.id == requestId }
+
+        if (index == -1) return false
+
+        requests[index].status = newStatus
+        saveAllRequests(requests)
+        return true
+    }
+
+    private fun getCurrentDate(): String {
+        val formatter = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+        return formatter.format(Date())
+    }
+}
