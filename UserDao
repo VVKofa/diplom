@@ -1,0 +1,60 @@
+package com.example.directionprogramm
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.Query
+import androidx.room.Update
+
+@Dao
+interface UserDao {
+
+    @Insert
+    suspend fun insert(user: User): Long
+
+    @Update
+    suspend fun update(user: User)
+
+    @Query("DELETE FROM users")
+    suspend fun clearUsers()
+
+    @Query("SELECT * FROM users")
+    suspend fun getAllUsers(): List<User>
+
+    @Query("SELECT * FROM users WHERE login = :login AND password = :password LIMIT 1")
+    suspend fun getUserByLoginAndPassword(login: String, password: String): User?
+
+    @Query("SELECT * FROM users WHERE role = 'admin' ORDER BY isActive DESC, fullName ASC")
+    suspend fun getAllAdmins(): List<User>
+
+    @Query("SELECT * FROM users WHERE role = 'manager' ORDER BY isActive DESC, fullName ASC")
+    suspend fun getAllManagers(): List<User>
+
+    @Query("SELECT * FROM users WHERE id = :userId LIMIT 1")
+    suspend fun getUserById(userId: Int): User?
+
+    @Query("SELECT * FROM users WHERE login = :login LIMIT 1")
+    suspend fun getUserByLogin(login: String): User?
+
+    @Query("SELECT * FROM users WHERE login = :login AND id != :userId LIMIT 1")
+    suspend fun getAnotherUserByLogin(login: String, userId: Int): User?
+
+    @Query("UPDATE users SET isActive = :isActive WHERE id = :userId")
+    suspend fun updateUserActiveStatus(userId: Int, isActive: Boolean)
+
+    @Query("UPDATE users SET carWashId = :carWashId WHERE id = :adminId")
+    suspend fun assignAdminToCarWash(adminId: Int, carWashId: Int)
+
+    @Query("""
+        SELECT 
+            users.id AS id,
+            users.login AS login,
+            users.fullName AS fullName,
+            car_washes.address AS carWashName,
+            car_washes.address AS carWashAddress
+        FROM users
+        INNER JOIN car_washes ON users.carWashId = car_washes.id
+        WHERE users.role = 'admin'
+        ORDER BY users.fullName ASC
+    """)
+    suspend fun getAllAdminsWithCarWash(): List<AdminAssignmentModel>
+}
