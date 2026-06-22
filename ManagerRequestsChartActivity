@@ -1,0 +1,360 @@
+package com.example.directionprogramm
+
+import android.graphics.Color
+import android.os.Bundle
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.ImageButton
+import android.widget.Spinner
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.charts.PieChart
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.data.PieData
+import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+class ManagerRequestsChartActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var emptyText: TextView
+    private lateinit var barChartTitle: TextView
+    private lateinit var addressChartTitle: TextView
+    private lateinit var districtSpinner: Spinner
+
+    private lateinit var barChart: BarChart
+    private lateinit var addressBarChart: BarChart
+    private lateinit var districtPieChart: PieChart
+    private lateinit var lineChart: LineChart
+
+    private lateinit var db: AppDatabase
+    private lateinit var sessionManager: SessionManager
+    private lateinit var requestRepository: RequestRepository
+
+    private val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+
+    private var allRequests: List<RequestModel> = emptyList()
+    private var managerCarWashes: List<CarWashEntity> = emptyList()
+    private var selectedDistrict: String = "Все округа"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_manager_requests_chart)
+
+        db = AppDatabase.getDatabase(this)
+        sessionManager = SessionManager(this)
+        requestRepository = RequestRepository(this)
+
+        backButton = findViewById(R.id.backButtonRequestsChart)
+        emptyText = findViewById(R.id.emptyChartText)
+        barChartTitle = findViewById(R.id.barChartTitle)
+        addressChartTitle = findViewById(R.id.addressChartTitle)
+        districtSpinner = findViewById(R.id.districtSpinner)
+
+        barChart = findViewById(R.id.barChartRequests)
+        addressBarChart = findViewById(R.id.addressBarChart)
+        districtPieChart = findViewById(R.id.districtPieChart)
+        lineChart = findViewById(R.id.lineChartRequests)
+
+        backButton.setOnClickListener { finish() }
+
+        loadDashboard()
+    }
+
+    private fun loadDashboard() {
+        val managerName = sessionManager.getUserName()
+
+        if (managerName.isNullOrEmpty()) {
+            emptyText.visibility = View.VISIBLE
+            emptyText.text = "Пользователь не найден"
+            return
+        }
+
+        lifecycleScope.launch {
+            managerCarWashes = db.carWashDao().getCarWashesByManager(managerName)
+            val carWashIds = managerCarWashes.map { it.id }
+
+            allRequests = requestRepository.getAdminRequests()
+                .filter { carWashIds.contains(it.carWashId) }
+
+            if (allRequests.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                emptyText.text = "Заявок пока нет"
+                return@launch
+            }
+
+            emptyText.visibility = View.GONE
+
+            setupDistrictSpinner()
+            updateCharts()
+        }
+    }
+
+    private fun setupDistrictSpinner() {
+        val districts = mutableListOf("Все округа")
+        districts.addAll(managerCarWashes.map { it.district }.distinct().sorted())
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, districts)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        districtSpinner.adapter = adapter
+
+        districtSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                selectedDistrict = districts[position]
+                updateCharts()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun updateCharts() {
+        val filteredRequests = if (selectedDistrict == "Все округа") {
+            allRequests
+        } else {
+            val districtCarWashIds = managerCarWashes
+                .filter { it.district == selectedDistrict }
+                .map { it.id }
+
+            allRequests.filter { districtCarWashIds.contains(it.carWashId) }
+        }
+
+        barChartTitle.text = if (selectedDistrict == "Все округа") {
+            "Количество заявок по датам"
+        } else {
+            "Количество заявок по датам: $selectedDistrict"
+        }
+
+        setupBarChartByDates(filteredRequests)
+        setupBarChartByAddresses(filteredRequests)
+        setupPieChartByDistricts()
+        setupLineChart(filteredRequests)
+    }
+
+    private fun setupBarChartByDates(requests: List<RequestModel>) {
+        val grouped = requests
+            .groupBy { it.createdDate }
+            .toSortedMap(compareBy {
+                runCatching { dateFormat.parse(it)?.time }.getOrNull() ?: 0L
+            })
+
+        val dates = grouped.keys.toList()
+
+        val entries = dates.mapIndexed { index, date ->
+            BarEntry(index.toFloat(), grouped[date]?.size?.toFloat() ?: 0f)
+        }
+
+        if (entries.isEmpty()) {
+            barChart.clear()
+            barChart.invalidate()
+            return
+        }
+
+        val dataSet = BarDataSet(entries, "Заявки").apply {
+            color = Color.parseColor("#3498DB")
+            valueTextColor = Color.parseColor("#1F2937")
+            valueTextSize = 11f
+        }
+
+        barChart.data = BarData(dataSet).apply {
+            barWidth = 0.55f
+        }
+
+        setupCommonBarChart(barChart, dates)
+    }
+
+    private fun setupBarChartByAddresses(requests: List<RequestModel>) {
+        val carWashesForChart = if (selectedDistrict == "Все округа") {
+            managerCarWashes
+        } else {
+            managerCarWashes.filter { it.district == selectedDistrict }
+        }
+
+        val addressCounts = carWashesForChart
+            .map { carWash ->
+                val shortAddress = carWash.address
+                    .replace("Москва, ", "")
+                    .replace("Московская область, ", "")
+                    .replace("МО, ", "")
+
+                shortAddress to requests.count { it.carWashId == carWash.id }
+            }
+            .filter { it.second > 0 }
+
+        val addresses = addressCounts.map { it.first }
+
+        val entries = addressCounts.mapIndexed { index, item ->
+            BarEntry(index.toFloat(), item.second.toFloat())
+        }
+
+        addressChartTitle.text = if (selectedDistrict == "Все округа") {
+            "Заявки по адресам"
+        } else {
+            "Заявки по адресам: $selectedDistrict"
+        }
+
+        if (entries.isEmpty()) {
+            addressBarChart.clear()
+            addressBarChart.invalidate()
+            return
+        }
+
+        val dataSet = BarDataSet(entries, "Заявки").apply {
+            color = Color.parseColor("#F59E0B")
+            valueTextColor = Color.parseColor("#1F2937")
+            valueTextSize = 11f
+        }
+
+        addressBarChart.data = BarData(dataSet).apply {
+            barWidth = 0.55f
+        }
+
+        setupCommonBarChart(addressBarChart, addresses)
+    }
+
+    private fun setupPieChartByDistricts() {
+        val districtCounts = managerCarWashes
+            .groupBy { it.district }
+            .mapValues { entry ->
+                val ids = entry.value.map { it.id }
+                allRequests.count { ids.contains(it.carWashId) }
+            }
+            .filter { it.value > 0 }
+            .toSortedMap()
+
+        val entries = districtCounts.map { (district, count) ->
+            PieEntry(count.toFloat(), district)
+        }
+
+        if (entries.isEmpty()) {
+            districtPieChart.clear()
+            districtPieChart.invalidate()
+            return
+        }
+
+        val dataSet = PieDataSet(entries, "").apply {
+            colors = listOf(
+                Color.parseColor("#1ABC9C"),
+                Color.parseColor("#3498DB"),
+                Color.parseColor("#2563EB"),
+                Color.parseColor("#F59E0B"),
+                Color.parseColor("#EF4444"),
+                Color.parseColor("#6B7280")
+            )
+            valueTextColor = Color.WHITE
+            valueTextSize = 13f
+            sliceSpace = 3f
+        }
+
+        districtPieChart.data = PieData(dataSet)
+        districtPieChart.description.isEnabled = false
+        districtPieChart.centerText = "${allRequests.size}\nвсего"
+        districtPieChart.setCenterTextSize(18f)
+        districtPieChart.setCenterTextColor(Color.parseColor("#1F2937"))
+        districtPieChart.holeRadius = 58f
+        districtPieChart.transparentCircleRadius = 62f
+        districtPieChart.legend.textColor = Color.parseColor("#374151")
+        districtPieChart.setEntryLabelColor(Color.parseColor("#1F2937"))
+        districtPieChart.setUsePercentValues(false)
+        districtPieChart.invalidate()
+    }
+
+    private fun setupLineChart(requests: List<RequestModel>) {
+        val grouped = requests
+            .groupBy { it.createdDate }
+            .toSortedMap(compareBy {
+                runCatching { dateFormat.parse(it)?.time }.getOrNull() ?: 0L
+            })
+
+        val dates = grouped.keys.toList()
+
+        var cumulative = 0f
+        val entries = dates.mapIndexed { index, date ->
+            cumulative += grouped[date]?.size?.toFloat() ?: 0f
+            Entry(index.toFloat(), cumulative)
+        }
+
+        if (entries.isEmpty()) {
+            lineChart.clear()
+            lineChart.invalidate()
+            return
+        }
+
+        val dataSet = LineDataSet(entries, "Накопительно").apply {
+            color = Color.parseColor("#2563EB")
+            setCircleColor(Color.parseColor("#2563EB"))
+            lineWidth = 3f
+            circleRadius = 4f
+            valueTextSize = 11f
+            valueTextColor = Color.parseColor("#1F2937")
+            mode = LineDataSet.Mode.CUBIC_BEZIER
+        }
+
+        lineChart.data = LineData(dataSet)
+        lineChart.description.isEnabled = false
+        lineChart.legend.isEnabled = true
+        lineChart.setScaleEnabled(false)
+
+        lineChart.xAxis.apply {
+            valueFormatter = IndexAxisValueFormatter(dates)
+            position = XAxis.XAxisPosition.BOTTOM
+            granularity = 1f
+            labelRotationAngle = -35f
+            textColor = Color.parseColor("#374151")
+            setDrawGridLines(false)
+        }
+
+        lineChart.axisLeft.apply {
+            axisMinimum = 0f
+            granularity = 1f
+            textColor = Color.parseColor("#374151")
+        }
+
+        lineChart.axisRight.isEnabled = false
+        lineChart.invalidate()
+    }
+
+    private fun setupCommonBarChart(chart: BarChart, labels: List<String>) {
+        chart.description.isEnabled = false
+        chart.legend.isEnabled = true
+        chart.setFitBars(true)
+        chart.setScaleEnabled(false)
+
+        chart.xAxis.apply {
+            valueFormatter = IndexAxisValueFormatter(labels)
+            position = XAxis.XAxisPosition.BOTTOM
+            granularity = 1f
+            labelRotationAngle = -35f
+            textColor = Color.parseColor("#374151")
+            setDrawGridLines(false)
+        }
+
+        chart.axisLeft.apply {
+            axisMinimum = 0f
+            granularity = 1f
+            textColor = Color.parseColor("#374151")
+        }
+
+        chart.axisRight.isEnabled = false
+        chart.invalidate()
+    }
+}
