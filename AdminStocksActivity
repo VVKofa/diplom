@@ -1,0 +1,219 @@
+package com.example.directionprogramm
+
+import android.graphics.Color
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+
+class AdminStocksActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var titleText: TextView
+    private lateinit var subtitleText: TextView
+    private lateinit var emptyText: TextView
+    private lateinit var stocksRecycler: RecyclerView
+
+    private lateinit var db: AppDatabase
+    private lateinit var sessionManager: SessionManager
+    private lateinit var stockRepository: StockRepository
+    private lateinit var adapter: StocksAdapter
+
+    private val items = mutableListOf<StockDisplayItem>()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_stocks)
+
+        db = AppDatabase.getDatabase(this)
+        sessionManager = SessionManager(this)
+        stockRepository = StockRepository(this, db)
+
+        backButton = findViewById(R.id.backButtonStocks)
+        titleText = findViewById(R.id.titleTextStocks)
+        subtitleText = findViewById(R.id.subtitleTextStocks)
+        emptyText = findViewById(R.id.emptyTextStocks)
+        stocksRecycler = findViewById(R.id.stocksRecycler)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        adapter = StocksAdapter(items)
+        stocksRecycler.layoutManager = LinearLayoutManager(this)
+        stocksRecycler.adapter = adapter
+
+        loadStocks()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadStocks()
+    }
+
+    private fun loadStocks() {
+        lifecycleScope.launch {
+            stockRepository.seedStocksIfNeeded()
+
+            val carWashId = sessionManager.getCarWashId()
+
+            if (carWashId == null) {
+                emptyText.visibility = View.VISIBLE
+                stocksRecycler.visibility = View.GONE
+                emptyText.text = "Администратор не закреплен за автомойкой"
+                return@launch
+            }
+
+            val carWash = db.carWashDao().getCarWashById(carWashId)
+
+            if (carWash == null) {
+                emptyText.visibility = View.VISIBLE
+                stocksRecycler.visibility = View.GONE
+                emptyText.text = "Автомойка не найдена"
+                return@launch
+            }
+
+            titleText.text = "Остатки материалов"
+            subtitleText.text = "Автомойка: ${carWash.address}"
+
+            val stocks = db.stockDao().getStocksByCarWash(carWashId)
+
+            items.clear()
+            items.addAll(
+                stocks.map {
+                    StockDisplayItem(
+                        carWashAddress = carWash.address,
+                        district = carWash.district,
+                        productName = it.productName,
+                        quantity = it.quantity,
+                        minQuantity = it.minQuantity,
+                        unit = it.unit
+                    )
+                }
+            )
+
+            if (items.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                stocksRecycler.visibility = View.GONE
+                emptyText.text = "Остатки материалов пока не добавлены"
+            } else {
+                emptyText.visibility = View.GONE
+                stocksRecycler.visibility = View.VISIBLE
+                adapter.notifyDataSetChanged()
+            }
+        }
+    }
+
+    inner class StocksAdapter(
+        private val stocks: List<StockDisplayItem>
+    ) : RecyclerView.Adapter<StocksAdapter.StockViewHolder>() {
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): StockViewHolder {
+            val card = CardView(parent.context).apply {
+                radius = 22f
+                cardElevation = 5f
+                useCompatPadding = true
+                setCardBackgroundColor(Color.WHITE)
+
+                layoutParams = RecyclerView.LayoutParams(
+                    RecyclerView.LayoutParams.MATCH_PARENT,
+                    RecyclerView.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    leftMargin = 12
+                    rightMargin = 12
+                    topMargin = 8
+                    bottomMargin = 8
+                }
+            }
+
+            val container = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(24, 22, 24, 22)
+            }
+
+            val carWashText = TextView(parent.context).apply {
+                textSize = 14f
+                setTextColor(Color.parseColor("#2563EB"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            val productText = TextView(parent.context).apply {
+                textSize = 18f
+                setTextColor(Color.parseColor("#1F2937"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, 12, 0, 0)
+            }
+
+            val quantityText = TextView(parent.context).apply {
+                textSize = 15f
+                setTextColor(Color.parseColor("#374151"))
+                setPadding(0, 8, 0, 0)
+            }
+
+            val minText = TextView(parent.context).apply {
+                textSize = 14f
+                setTextColor(Color.parseColor("#6B7280"))
+                setPadding(0, 5, 0, 0)
+            }
+
+            val statusText = TextView(parent.context).apply {
+                textSize = 14f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, 10, 0, 0)
+            }
+
+            container.addView(carWashText)
+            container.addView(productText)
+            container.addView(quantityText)
+            container.addView(minText)
+            container.addView(statusText)
+
+            card.addView(container)
+
+            return StockViewHolder(
+                card,
+                carWashText,
+                productText,
+                quantityText,
+                minText,
+                statusText
+            )
+        }
+
+        override fun onBindViewHolder(holder: StockViewHolder, position: Int) {
+            val item = stocks[position]
+
+            holder.carWashText.text = "Автомойка: ${item.carWashAddress}"
+            holder.productText.text = item.productName
+            holder.quantityText.text = "Остаток: ${item.quantity} ${item.unit}"
+            holder.minText.text = "Минимальный остаток: ${item.minQuantity} ${item.unit}"
+
+            if (item.quantity <= item.minQuantity) {
+                holder.statusText.text = "Статус: низкий остаток"
+                holder.statusText.setTextColor(Color.parseColor("#F59E0B"))
+            } else {
+                holder.statusText.text = "Статус: достаточно"
+                holder.statusText.setTextColor(Color.parseColor("#10B981"))
+            }
+        }
+
+        override fun getItemCount(): Int = stocks.size
+
+        inner class StockViewHolder(
+            itemView: View,
+            val carWashText: TextView,
+            val productText: TextView,
+            val quantityText: TextView,
+            val minText: TextView,
+            val statusText: TextView
+        ) : RecyclerView.ViewHolder(itemView)
+    }
+}
