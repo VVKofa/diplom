@@ -1,0 +1,154 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
+class DirectorActivity : AppCompatActivity() {
+
+    private lateinit var sessionManager: SessionManager
+    private lateinit var notificationRepository: NotificationRepository
+
+    private lateinit var helloText: TextView
+
+    private lateinit var ordersCard: LinearLayout
+    private lateinit var historyCard: LinearLayout
+    private lateinit var productsCard: LinearLayout
+    private lateinit var carWashesCard: LinearLayout
+    private lateinit var accountsCard: LinearLayout
+    private lateinit var analyticsCard: LinearLayout
+    private lateinit var profileCard: LinearLayout
+    private lateinit var logoutButton: Button
+
+    private lateinit var notificationCard: LinearLayout
+    private lateinit var notificationTitleText: TextView
+    private lateinit var notificationMessageText: TextView
+    private lateinit var notificationBadgeText: TextView
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_director)
+
+        sessionManager = SessionManager(this)
+        notificationRepository = NotificationRepository(this)
+
+        initViews()
+        setupUserInfo()
+        setupClickListeners()
+        loadDirectorNotifications()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadDirectorNotifications()
+    }
+
+    private fun initViews() {
+        helloText = findViewById(R.id.directorHelloText)
+
+        ordersCard = findViewById(R.id.directorOrdersCard)
+        historyCard = findViewById(R.id.directorHistoryCard)
+        productsCard = findViewById(R.id.directorProductsCard)
+        carWashesCard = findViewById(R.id.directorCarWashesCard)
+        accountsCard = findViewById(R.id.directorAccountsCard)
+        analyticsCard = findViewById(R.id.directorAnalyticsCard)
+        profileCard = findViewById(R.id.directorProfileCard)
+        logoutButton = findViewById(R.id.logoutButtonDirector)
+
+        notificationCard = findViewById(R.id.directorNotificationCard)
+        notificationTitleText = findViewById(R.id.directorNotificationTitleText)
+        notificationMessageText = findViewById(R.id.directorNotificationMessageText)
+        notificationBadgeText = findViewById(R.id.directorNotificationBadgeText)
+    }
+
+    private fun setupUserInfo() {
+        val name = sessionManager.getUserName() ?: "Руководитель"
+        helloText.text = "Здравствуйте, $name"
+    }
+
+    private fun setupClickListeners() {
+        ordersCard.setOnClickListener {
+            openManagerOrders()
+        }
+
+        historyCard.setOnClickListener {
+            startActivity(Intent(this, OrderHistoryActivity::class.java))
+        }
+
+        productsCard.setOnClickListener {
+            startActivity(Intent(this, DirectorProductsActivity::class.java))
+        }
+
+        carWashesCard.setOnClickListener {
+            startActivity(Intent(this, DirectorCarWashesActivity::class.java))
+        }
+
+        accountsCard.setOnClickListener {
+            startActivity(Intent(this, AccountsActivity::class.java))
+        }
+
+        analyticsCard.setOnClickListener {
+            startActivity(Intent(this, DirectorAnalyticsActivity::class.java))
+        }
+
+        profileCard.setOnClickListener {
+            startActivity(Intent(this, ProfileActivity::class.java))
+        }
+
+        notificationCard.setOnClickListener {
+            lifecycleScope.launch {
+                notificationRepository.markDirectorNotificationsAsRead()
+                loadDirectorNotifications()
+                openManagerOrders()
+            }
+        }
+
+        logoutButton.setOnClickListener {
+            sessionManager.logout()
+
+            val intent = Intent(this, MainActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
+
+            finish()
+        }
+    }
+
+    private fun loadDirectorNotifications() {
+        lifecycleScope.launch {
+            val notifications = notificationRepository.getDirectorNotifications()
+            val unreadCount = notificationRepository.getDirectorUnreadCount()
+
+            notificationCard.visibility = View.VISIBLE
+
+            if (notifications.isEmpty()) {
+                notificationTitleText.text = "Уведомлений нет"
+                notificationMessageText.text = "Новые заявки на согласование пока не поступали"
+                notificationBadgeText.visibility = View.GONE
+                return@launch
+            }
+
+            val latestNotification = notifications.first()
+
+            notificationTitleText.text = latestNotification.title
+            notificationMessageText.text = latestNotification.message
+
+            if (unreadCount > 0) {
+                notificationBadgeText.visibility = View.VISIBLE
+                notificationBadgeText.text = unreadCount.toString()
+            } else {
+                notificationBadgeText.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun openManagerOrders() {
+        startActivity(Intent(this, DirectorManagerOrdersActivity::class.java))
+    }
+}
