@@ -1,0 +1,184 @@
+package com.example.directionprogramm
+
+import android.graphics.Color
+import android.graphics.Typeface
+import android.os.Bundle
+import android.view.Gravity
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
+class CartActivity : AppCompatActivity() {
+
+    private lateinit var cartContainer: LinearLayout
+    private lateinit var totalItemsText: TextView
+    private lateinit var totalQuantityText: TextView
+    private lateinit var makeOrderButton: Button
+    private lateinit var backButton: ImageButton
+
+    private lateinit var requestRepository: RequestRepository
+    private lateinit var notificationRepository: NotificationRepository
+    private lateinit var sessionManager: SessionManager
+    private lateinit var db: AppDatabase
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_cart)
+
+        requestRepository = RequestRepository(this)
+        notificationRepository = NotificationRepository(this)
+        sessionManager = SessionManager(this)
+        db = AppDatabase.getDatabase(this)
+
+        backButton = findViewById(R.id.backButtonCart)
+        cartContainer = findViewById(R.id.cartContainer)
+        totalItemsText = findViewById(R.id.totalItemsText)
+        totalQuantityText = findViewById(R.id.totalQuantityText)
+        makeOrderButton = findViewById(R.id.makeOrderButton)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        makeOrderButton.setOnClickListener {
+            if (CartManager.cartItems.isEmpty()) {
+                Toast.makeText(this, "Корзина пуста", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val carWashId = sessionManager.getCarWashId()
+
+            if (carWashId == null) {
+                Toast.makeText(this, "Администратор не привязан к автомойке", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            lifecycleScope.launch {
+                val requestItems = CartManager.cartItems.map {
+                    RequestItemModel(
+                        productName = it.product.name,
+                        quantity = it.quantity
+                    )
+                }
+
+                val request = requestRepository.createRequest(requestItems, carWashId)
+                val carWash = db.carWashDao().getCarWashById(carWashId)
+
+                if (carWash != null && carWash.managerName.isNotBlank()) {
+                    notificationRepository.addNotification(
+                        userRole = "manager",
+                        receiverName = carWash.managerName,
+                        carWashId = carWashId,
+                        requestId = request.id,
+                        title = "Новая заявка от администратора",
+                        message = "Поступила заявка №${request.id} от автомойки: ${carWash.address}"
+                    )
+                }
+
+                CartManager.cartItems.clear()
+                updateCart()
+
+                Toast.makeText(
+                    this@CartActivity,
+                    "Заявка отправлена территориальному менеджеру",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+        updateCart()
+    }
+
+    private fun updateCart() {
+        cartContainer.removeAllViews()
+
+        if (CartManager.cartItems.isEmpty()) {
+            totalItemsText.text = "Товаров: 0"
+            totalQuantityText.text = "Количество: 0"
+            makeOrderButton.isEnabled = false
+            return
+        }
+
+        makeOrderButton.isEnabled = true
+
+        for (item in CartManager.cartItems) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(Color.WHITE)
+                setPadding(24, 24, 24, 24)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = 16
+                }
+            }
+
+            val titleText = TextView(this).apply {
+                text = item.product.name
+                textSize = 18f
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(Color.parseColor("#1F2937"))
+            }
+
+            val quantityRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 20
+                }
+            }
+
+            val minusButton = Button(this).apply {
+                text = "-"
+                textSize = 18f
+            }
+
+            val quantityText = TextView(this).apply {
+                text = "   ${item.quantity}   "
+                textSize = 20f
+                gravity = Gravity.CENTER
+                setTextColor(Color.BLACK)
+            }
+
+            val plusButton = Button(this).apply {
+                text = "+"
+                textSize = 18f
+            }
+
+            minusButton.setOnClickListener {
+                if (item.quantity > 1) {
+                    item.quantity--
+                } else {
+                    CartManager.cartItems.remove(item)
+                }
+                updateCart()
+            }
+
+            plusButton.setOnClickListener {
+                item.quantity++
+                updateCart()
+            }
+
+            quantityRow.addView(minusButton)
+            quantityRow.addView(quantityText)
+            quantityRow.addView(plusButton)
+
+            card.addView(titleText)
+            card.addView(quantityRow)
+
+            cartContainer.addView(card)
+        }
+
+        totalItemsText.text = "Товаров: ${CartManager.cartItems.size}"
+        totalQuantityText.text = "Количество: ${CartManager.cartItems.sumOf { it.quantity }}"
+    }
+}
