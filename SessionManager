@@ -1,0 +1,59 @@
+package com.example.directionprogramm
+
+import android.content.Context
+
+class SessionManager(context: Context) {
+
+    private val prefs = context.getSharedPreferences("user_session", Context.MODE_PRIVATE)
+
+    fun saveUser(user: User) {
+        prefs.edit()
+            .putInt(KEY_USER_ID, user.id)
+            .putString(KEY_LOGIN, user.login)
+            .putString(KEY_FULL_NAME, user.fullName)
+            .putString(KEY_ROLE, user.role)
+            .putInt(KEY_CAR_WASH_ID, user.carWashId ?: -1)
+            .apply()
+    }
+
+    fun getUserId(): Int {
+        return prefs.getInt(KEY_USER_ID, -1)
+    }
+
+    fun getUserLogin(): String? {
+        return prefs.getString(KEY_LOGIN, null)
+    }
+
+    fun getUserName(): String? {
+        return prefs.getString(KEY_FULL_NAME, null)
+    }
+
+    fun getUserRole(): String? {
+        return prefs.getString(KEY_ROLE, null)
+    }
+
+    fun getCarWashId(): Int? {
+        val id = prefs.getInt(KEY_CAR_WASH_ID, -1)
+        return if (id == -1) null else id
+    }
+
+    fun isLoggedIn(): Boolean {
+        return getUserRole() != null
+    }
+
+    fun isManager(): Boolean {
+        return getUserRole() == "manager"
+    }
+
+    fun logout() {
+        prefs.edit().clear().apply()
+    }
+
+    companion object {
+        private const val KEY_USER_ID = "userId"
+        private const val KEY_LOGIN = "login"
+        private const val KEY_FULL_NAME = "fullName"
+        private const val KEY_ROLE = "role"
+        private const val KEY_CAR_WASH_ID = "carWashId"
+    }
+}
