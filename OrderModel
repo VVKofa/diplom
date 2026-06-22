@@ -1,0 +1,13 @@
+package com.example.directionprogramm
+
+data class OrderModel(
+    val id: Int,
+    val createdDate: String,
+    val items: List<OrderItemModel>,
+    var status: String,
+    val createdByRole: String,
+    val carWashId: Int,
+
+    // Список заявок, из которых был сформирован заказ менеджера
+    val sourceRequestIds: List<Int>? = emptyList()
+)
