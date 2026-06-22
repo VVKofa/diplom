@@ -1,0 +1,9 @@
+package com.example.directionprogramm
+
+data class AdminAssignmentModel(
+    val id: Int,
+    val login: String,
+    val fullName: String,
+    val carWashName: String,
+    val carWashAddress: String
+)
