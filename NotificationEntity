@@ -1,0 +1,28 @@
+package com.example.directionprogramm
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "notifications")
+data class NotificationEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+
+    // "admin", "manager", "director"
+    val userRole: String,
+
+    // Для менеджера: ФИО менеджера, которому адресовано уведомление
+    val receiverName: String? = null,
+
+    // Для администратора: id автомойки администратора
+    val carWashId: Int? = null,
+
+    val title: String,
+    val message: String,
+
+    val orderId: Int? = null,
+    val requestId: Int? = null,
+
+    val isRead: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+)
