@@ -1,0 +1,151 @@
+package com.example.directionprogramm
+
+import android.os.Bundle
+import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.Spinner
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+
+class AssignAdminToCarWashActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var carWashSpinner: Spinner
+    private lateinit var adminSpinner: Spinner
+    private lateinit var assignButton: Button
+    private lateinit var assignmentsRecycler: RecyclerView
+    private lateinit var emptyAssignmentsText: TextView
+
+    private lateinit var db: AppDatabase
+    private lateinit var sessionManager: SessionManager
+    private lateinit var adapter: AssignmentAdapter
+
+    private var carWashes: List<CarWashEntity> = emptyList()
+    private var admins: List<User> = emptyList()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        sessionManager = SessionManager(this)
+
+        if (!sessionManager.isManager()) {
+            Toast.makeText(
+                this,
+                "Доступ разрешен только территориальному менеджеру",
+                Toast.LENGTH_LONG
+            ).show()
+            finish()
+            return
+        }
+
+        setContentView(R.layout.activity_assign_admin_carwash)
+
+        db = AppDatabase.getDatabase(this)
+
+        backButton = findViewById(R.id.backButtonAssign)
+        carWashSpinner = findViewById(R.id.carWashSpinner)
+        adminSpinner = findViewById(R.id.adminSpinner)
+        assignButton = findViewById(R.id.assignButton)
+        assignmentsRecycler = findViewById(R.id.assignmentsRecycler)
+        emptyAssignmentsText = findViewById(R.id.emptyAssignmentsText)
+
+        backButton.setOnClickListener { finish() }
+
+        assignmentsRecycler.layoutManager = LinearLayoutManager(this)
+        adapter = AssignmentAdapter()
+        assignmentsRecycler.adapter = adapter
+
+        assignButton.setOnClickListener {
+            assignAdminToCarWash()
+        }
+
+        loadData()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadAssignments()
+    }
+
+    private fun loadData() {
+        lifecycleScope.launch {
+            carWashes = db.carWashDao().getAllCarWashes()
+            admins = db.userDao().getAllAdmins()
+
+            setupSpinners()
+            loadAssignments()
+        }
+    }
+
+    private fun setupSpinners() {
+        val carWashTitles = if (carWashes.isEmpty()) {
+            listOf("Нет автомоек")
+        } else {
+            carWashes.map { "${it.district} — ${it.address} (${it.managerName})" }
+        }
+
+        val adminTitles = if (admins.isEmpty()) {
+            listOf("Нет администраторов")
+        } else {
+            admins.map { "${it.fullName} (${it.login})" }
+        }
+
+        carWashSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            carWashTitles
+        ).also {
+            it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+
+        adminSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            adminTitles
+        ).also {
+            it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+    }
+
+    private fun assignAdminToCarWash() {
+        if (carWashes.isEmpty() || admins.isEmpty()) {
+            Toast.makeText(this, "Нет данных для назначения", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val selectedCarWash = carWashes[carWashSpinner.selectedItemPosition]
+        val selectedAdmin = admins[adminSpinner.selectedItemPosition]
+
+        lifecycleScope.launch {
+            db.userDao().assignAdminToCarWash(selectedAdmin.id, selectedCarWash.id)
+            Toast.makeText(
+                this@AssignAdminToCarWashActivity,
+                "Администратор назначен на автомойку",
+                Toast.LENGTH_SHORT
+            ).show()
+            loadAssignments()
+        }
+    }
+
+    private fun loadAssignments() {
+        lifecycleScope.launch {
+            val adminsWithCarWash = db.userDao().getAllAdminsWithCarWash()
+
+            if (adminsWithCarWash.isEmpty()) {
+                emptyAssignmentsText.visibility = View.VISIBLE
+                assignmentsRecycler.visibility = View.GONE
+            } else {
+                emptyAssignmentsText.visibility = View.GONE
+                assignmentsRecycler.visibility = View.VISIBLE
+                adapter.submitList(adminsWithCarWash)
+            }
+        }
+    }
+}
