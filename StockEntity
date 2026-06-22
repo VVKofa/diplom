@@ -1,0 +1,15 @@
+package com.example.directionprogramm
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "stocks")
+data class StockEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val carWashId: Int,
+    val productName: String,
+    val quantity: Int,
+    val minQuantity: Int,
+    val unit: String
+)
