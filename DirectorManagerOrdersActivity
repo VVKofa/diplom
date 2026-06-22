@@ -1,0 +1,533 @@
+package com.example.directionprogramm
+
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.CheckBox
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class DirectorManagerOrdersActivity : AppCompatActivity() {
+
+    private lateinit var backButton: View
+    private lateinit var ordersRecycler: RecyclerView
+    private lateinit var emptyText: TextView
+    private lateinit var createCombinedOrderButton: View
+    private lateinit var exportExcelButton: View
+
+    private lateinit var orderRepository: OrderRepository
+    private lateinit var requestRepository: RequestRepository
+    private lateinit var db: AppDatabase
+    private lateinit var adapter: ManagerOrdersAdapter
+
+    private val selectedOrderIds = mutableSetOf<Int>()
+    private val exportRows = mutableListOf<ExcelOrderRow>()
+
+    private val createExcelFileLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.CreateDocument("application/vnd.ms-excel")
+        ) { uri ->
+            if (uri != null) {
+                ExcelExporter(this).exportOrdersToExcel(uri, exportRows)
+
+                Toast.makeText(
+                    this,
+                    "Excel-файл сохранен",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                openExcelFile(uri)
+            }
+        }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_director_manager_orders)
+
+        orderRepository = OrderRepository(this)
+        requestRepository = RequestRepository(this)
+        db = AppDatabase.getDatabase(this)
+
+        initViews()
+        setupRecycler()
+        setupClicks()
+
+        updateButtonState()
+        loadOrders()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadOrders()
+    }
+
+    private fun initViews() {
+        backButton = findViewById(R.id.backButtonDirectorManagerOrders)
+        ordersRecycler = findViewById(R.id.directorManagerOrdersRecycler)
+        emptyText = findViewById(R.id.emptyDirectorManagerOrdersText)
+        createCombinedOrderButton = findViewById(R.id.createDirectorOrderButton)
+        exportExcelButton = findExcelButton()
+    }
+
+    private fun findExcelButton(): View {
+        val iconId = resources.getIdentifier(
+            "exportExcelIconButton",
+            "id",
+            packageName
+        )
+
+        if (iconId != 0) {
+            val iconView = findViewById<View?>(iconId)
+            if (iconView != null) return iconView
+        }
+
+        val buttonId = resources.getIdentifier(
+            "exportExcelButton",
+            "id",
+            packageName
+        )
+
+        if (buttonId != 0) {
+            val buttonView = findViewById<View?>(buttonId)
+            if (buttonView != null) return buttonView
+        }
+
+        throw IllegalStateException(
+            "Не найден элемент выгрузки Excel. Добавь в XML id exportExcelIconButton или exportExcelButton"
+        )
+    }
+
+    private fun setupRecycler() {
+        ordersRecycler.layoutManager = LinearLayoutManager(this)
+
+        adapter = ManagerOrdersAdapter(
+            onClick = { order ->
+                val intent = Intent(this, OrderDetailsActivity::class.java)
+                intent.putExtra("order_id", order.id)
+                startActivity(intent)
+            },
+            onCheckedChange = { orderId, isChecked ->
+                if (isChecked) {
+                    selectedOrderIds.add(orderId)
+                } else {
+                    selectedOrderIds.remove(orderId)
+                }
+
+                updateButtonState()
+            }
+        )
+
+        ordersRecycler.adapter = adapter
+    }
+
+    private fun setupClicks() {
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        exportExcelButton.setOnClickListener {
+            exportOrders()
+        }
+
+        createCombinedOrderButton.setOnClickListener {
+            if (selectedOrderIds.isEmpty()) {
+                Toast.makeText(this, "Выберите заказы", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val order = orderRepository.createDirectorOrderFromManagerOrders(
+                selectedOrderIds.toList()
+            )
+
+            if (order != null) {
+                Toast.makeText(
+                    this,
+                    "Общий заказ руководителя сформирован",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                selectedOrderIds.clear()
+                updateButtonState()
+                loadOrders()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Не удалось сформировать заказ",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun loadOrders() {
+        val orders = orderRepository.getOrdersFromManagersForDirector()
+
+        if (orders.isEmpty()) {
+            emptyText.visibility = View.VISIBLE
+            ordersRecycler.visibility = View.GONE
+            emptyText.text = "Заказов от менеджеров пока нет"
+            adapter.submitList(emptyList())
+        } else {
+            emptyText.visibility = View.GONE
+            ordersRecycler.visibility = View.VISIBLE
+            adapter.submitList(orders)
+        }
+
+        prepareExportRows(orders)
+    }
+
+    private fun prepareExportRows(orders: List<OrderModel>) {
+        lifecycleScope.launch {
+            exportRows.clear()
+
+            orders.forEach { order ->
+                val rowsForOrder = buildRowsForOrder(order)
+                exportRows.addAll(rowsForOrder)
+            }
+
+            exportExcelButton.isEnabled = exportRows.isNotEmpty()
+            exportExcelButton.alpha = if (exportRows.isNotEmpty()) 1f else 0.45f
+        }
+    }
+
+    private suspend fun buildRowsForOrder(order: OrderModel): List<ExcelOrderRow> {
+        val itemsWithCarWash = order.items.filter { it.carWashId != null }
+
+        return if (itemsWithCarWash.isNotEmpty()) {
+            buildRowsFromOrderItemsWithCarWash(order, itemsWithCarWash)
+        } else {
+            val sourceRequestIds = order.sourceRequestIds.orEmpty()
+
+            if (sourceRequestIds.isNotEmpty()) {
+                buildRowsFromSourceRequests(order, sourceRequestIds)
+            } else {
+                buildRowsFromOrderItems(order)
+            }
+        }
+    }
+
+    private suspend fun buildRowsFromOrderItemsWithCarWash(
+        order: OrderModel,
+        items: List<OrderItemModel>
+    ): List<ExcelOrderRow> {
+        val grouped = items.groupBy { item ->
+            Pair(item.carWashId, item.productName)
+        }
+
+        val rows = mutableListOf<ExcelOrderRow>()
+
+        grouped.forEach { group ->
+            val carWashId = group.key.first
+            val productName = group.key.second
+            val quantity = group.value.sumOf { it.quantity }
+
+            val carWash = if (carWashId != null) {
+                db.carWashDao().getCarWashById(carWashId)
+            } else {
+                null
+            }
+
+            rows.add(
+                ExcelOrderRow(
+                    district = carWash?.district ?: "Округ не указан",
+                    managerName = carWash?.managerName ?: "Менеджер не указан",
+                    orderId = order.id,
+                    createdDate = order.createdDate,
+                    carWashAddress = carWash?.address ?: "Автомойка не найдена",
+                    productName = productName,
+                    quantity = quantity,
+                    status = order.status
+                )
+            )
+        }
+
+        return rows.sortedWith(
+            compareBy<ExcelOrderRow> { it.district }
+                .thenBy { it.managerName }
+                .thenBy { it.carWashAddress }
+                .thenBy { it.productName }
+        )
+    }
+
+    private suspend fun buildRowsFromSourceRequests(
+        order: OrderModel,
+        sourceRequestIds: List<Int>
+    ): List<ExcelOrderRow> {
+        val sourceRequests = sourceRequestIds
+            .distinct()
+            .mapNotNull { requestId ->
+                requestRepository.getRequestById(requestId)
+            }
+
+        if (sourceRequests.isEmpty()) {
+            return buildRowsFromOrderItems(order)
+        }
+
+        val grouped = sourceRequests
+            .flatMap { request ->
+                request.items.map { item ->
+                    ExportGroupItem(
+                        carWashId = request.carWashId,
+                        productName = item.productName,
+                        quantity = item.quantity
+                    )
+                }
+            }
+            .groupBy { item ->
+                Pair(item.carWashId, item.productName)
+            }
+
+        val rows = mutableListOf<ExcelOrderRow>()
+
+        grouped.forEach { group ->
+            val carWashId = group.key.first
+            val productName = group.key.second
+            val quantity = group.value.sumOf { it.quantity }
+
+            val carWash = db.carWashDao().getCarWashById(carWashId)
+
+            rows.add(
+                ExcelOrderRow(
+                    district = carWash?.district ?: "Округ не указан",
+                    managerName = carWash?.managerName ?: "Менеджер не указан",
+                    orderId = order.id,
+                    createdDate = order.createdDate,
+                    carWashAddress = carWash?.address ?: "Автомойка не найдена",
+                    productName = productName,
+                    quantity = quantity,
+                    status = order.status
+                )
+            )
+        }
+
+        return rows.sortedWith(
+            compareBy<ExcelOrderRow> { it.district }
+                .thenBy { it.managerName }
+                .thenBy { it.carWashAddress }
+                .thenBy { it.productName }
+        )
+    }
+
+    private suspend fun buildRowsFromOrderItems(order: OrderModel): List<ExcelOrderRow> {
+        val carWash = db.carWashDao().getCarWashById(order.carWashId)
+
+        val groupedItems = order.items
+            .groupBy { it.productName }
+            .mapValues { group ->
+                group.value.sumOf { it.quantity }
+            }
+
+        return groupedItems.map { item ->
+            ExcelOrderRow(
+                district = carWash?.district ?: "Округ не указан",
+                managerName = carWash?.managerName ?: "Менеджер не указан",
+                orderId = order.id,
+                createdDate = order.createdDate,
+                carWashAddress = carWash?.address ?: "Автомойка не найдена",
+                productName = item.key,
+                quantity = item.value,
+                status = order.status
+            )
+        }.sortedBy { it.productName }
+    }
+
+    private fun exportOrders() {
+        if (exportRows.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Нет данных для выгрузки",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val currentDate = SimpleDateFormat(
+            "dd_MM_yyyy_HH_mm",
+            Locale.getDefault()
+        ).format(Date())
+
+        val fileName = "заказы_$currentDate.xls"
+
+        createExcelFileLauncher.launch(fileName)
+    }
+
+    private fun openExcelFile(uri: Uri) {
+        val openIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.ms-excel")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        try {
+            startActivity(
+                Intent.createChooser(
+                    openIntent,
+                    "Открыть Excel-файл"
+                )
+            )
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(
+                this,
+                "На эмуляторе нет приложения для открытия Excel. Установите Google Таблицы или Microsoft Excel",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun updateButtonState() {
+        createCombinedOrderButton.isEnabled = selectedOrderIds.isNotEmpty()
+        createCombinedOrderButton.alpha = if (selectedOrderIds.isNotEmpty()) 1f else 0.5f
+    }
+
+    private data class ExportGroupItem(
+        val carWashId: Int,
+        val productName: String,
+        val quantity: Int
+    )
+
+    inner class ManagerOrdersAdapter(
+        private val onClick: (OrderModel) -> Unit,
+        private val onCheckedChange: (Int, Boolean) -> Unit
+    ) : RecyclerView.Adapter<ManagerOrdersAdapter.OrderViewHolder>() {
+
+        private val items = mutableListOf<OrderModel>()
+
+        fun submitList(newItems: List<OrderModel>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): OrderViewHolder {
+            val card = CardView(parent.context).apply {
+                radius = 20f
+                cardElevation = 6f
+                useCompatPadding = true
+                setCardBackgroundColor(Color.WHITE)
+
+                layoutParams = RecyclerView.LayoutParams(
+                    RecyclerView.LayoutParams.MATCH_PARENT,
+                    RecyclerView.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    leftMargin = 12
+                    rightMargin = 12
+                    topMargin = 8
+                    bottomMargin = 8
+                }
+            }
+
+            val row = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(24, 22, 24, 22)
+            }
+
+            val textContainer = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+
+            val title = TextView(parent.context).apply {
+                textSize = 18f
+                setTextColor(Color.parseColor("#1F2937"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            val date = TextView(parent.context).apply {
+                textSize = 15f
+                setTextColor(Color.parseColor("#374151"))
+                setPadding(0, 8, 0, 0)
+            }
+
+            val count = TextView(parent.context).apply {
+                textSize = 15f
+                setTextColor(Color.parseColor("#374151"))
+                setPadding(0, 6, 0, 0)
+            }
+
+            val status = TextView(parent.context).apply {
+                textSize = 15f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, 8, 0, 0)
+            }
+
+            val checkBox = CheckBox(parent.context)
+
+            textContainer.addView(title)
+            textContainer.addView(date)
+            textContainer.addView(count)
+            textContainer.addView(status)
+
+            row.addView(textContainer)
+            row.addView(checkBox)
+
+            card.addView(row)
+
+            return OrderViewHolder(
+                card,
+                title,
+                date,
+                count,
+                status,
+                checkBox
+            )
+        }
+
+        override fun onBindViewHolder(holder: OrderViewHolder, position: Int) {
+            val order = items[position]
+
+            holder.title.text = "Заказ менеджера №${order.id}"
+            holder.date.text = "Дата создания: ${order.createdDate}"
+            holder.count.text = "Товаров: ${order.items.sumOf { it.quantity }}"
+            holder.status.text = "Статус: ${order.status}"
+
+            holder.status.setTextColor(
+                when (order.status) {
+                    "Новая заявка" -> Color.parseColor("#10B981")
+                    "Сформирован руководителем" -> Color.parseColor("#2563EB")
+                    "Отклонена" -> Color.parseColor("#F59E0B")
+                    else -> Color.parseColor("#374151")
+                }
+            )
+
+            holder.checkBox.setOnCheckedChangeListener(null)
+            holder.checkBox.isChecked = selectedOrderIds.contains(order.id)
+
+            holder.checkBox.setOnCheckedChangeListener { _, isChecked ->
+                onCheckedChange(order.id, isChecked)
+            }
+
+            holder.itemView.setOnClickListener {
+                onClick(order)
+            }
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        inner class OrderViewHolder(
+            itemView: View,
+            val title: TextView,
+            val date: TextView,
+            val count: TextView,
+            val status: TextView,
+            val checkBox: CheckBox
+        ) : RecyclerView.ViewHolder(itemView)
+    }
+}
