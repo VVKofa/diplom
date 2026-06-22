@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F6F6F8">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingStart="22dp"
+        android:paddingTop="26dp"
+        android:paddingEnd="22dp">
+
+        <ImageButton
+            android:id="@+id/backButtonStocks"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:background="@drawable/bg_small_white_circle"
+            android:contentDescription="Назад"
+            android:elevation="4dp"
+            android:padding="10dp"
+            android:src="@drawable/ic_back_blue" />
+
+        <TextView
+            android:id="@+id/titleTextStocks"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:text="Остатки материалов"
+            android:textColor="#1F2937"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/subtitleTextStocks"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="7dp"
+            android:text="Материалы по автомойкам"
+            android:textColor="#6B7280"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/emptyTextStocks"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="34dp"
+            android:gravity="center"
+            android:text="Остатки материалов пока не добавлены"
+            android:textColor="#6B7280"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/stocksRecycler"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="20dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="24dp" />
+
+    </LinearLayout>
+
+</FrameLayout>
