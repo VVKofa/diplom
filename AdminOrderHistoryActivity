@@ -1,0 +1,157 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.graphics.Color
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+
+class AdminOrderHistoryActivity : AppCompatActivity() {
+
+    private lateinit var recycler: RecyclerView
+    private lateinit var emptyText: TextView
+    private lateinit var backButton: ImageButton
+
+    private lateinit var requestRepository: RequestRepository
+    private lateinit var sessionManager: SessionManager
+    private lateinit var adapter: AdminRequestsAdapter
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_admin_order_history)
+
+        requestRepository = RequestRepository(this)
+        sessionManager = SessionManager(this)
+
+        recycler = findViewById(R.id.ordersRecyclerAdminHistory)
+        emptyText = findViewById(R.id.emptyTextAdminHistory)
+        backButton = findViewById(R.id.backButtonAdminHistory)
+
+        recycler.layoutManager = LinearLayoutManager(this)
+
+        adapter = AdminRequestsAdapter { request ->
+            val intent = Intent(this, ManagerRequestDetailsActivity::class.java)
+            intent.putExtra("request_id", request.id)
+            startActivity(intent)
+        }
+
+        recycler.adapter = adapter
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        loadRequests()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadRequests()
+    }
+
+    private fun loadRequests() {
+        val carWashId = sessionManager.getCarWashId()
+
+        if (carWashId == null) {
+            emptyText.visibility = View.VISIBLE
+            recycler.visibility = View.GONE
+            emptyText.text = "Автомойка не назначена"
+            return
+        }
+
+        val requests = requestRepository.getAdminRequests()
+            .filter { it.carWashId == carWashId }
+            .sortedByDescending { it.id }
+
+        if (requests.isEmpty()) {
+            emptyText.visibility = View.VISIBLE
+            recycler.visibility = View.GONE
+            emptyText.text = "История заявок пуста"
+        } else {
+            emptyText.visibility = View.GONE
+            recycler.visibility = View.VISIBLE
+            adapter.submitList(requests)
+        }
+    }
+
+    inner class AdminRequestsAdapter(
+        private val onClick: (RequestModel) -> Unit
+    ) : RecyclerView.Adapter<AdminRequestsAdapter.ViewHolder>() {
+
+        private val items = mutableListOf<RequestModel>()
+
+        fun submitList(newItems: List<RequestModel>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val card = CardView(parent.context).apply {
+                radius = 20f
+                cardElevation = 6f
+                setCardBackgroundColor(Color.WHITE)
+
+                layoutParams = RecyclerView.LayoutParams(
+                    RecyclerView.LayoutParams.MATCH_PARENT,
+                    RecyclerView.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(12, 8, 12, 8)
+                }
+            }
+
+            val container = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(28, 24, 28, 24)
+            }
+
+            val title = TextView(parent.context)
+            val date = TextView(parent.context)
+            val status = TextView(parent.context)
+
+            container.addView(title)
+            container.addView(date)
+            container.addView(status)
+            card.addView(container)
+
+            return ViewHolder(card, title, date, status)
+        }
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val item = items[position]
+
+            holder.title.text = "Заявка №${item.id}"
+            holder.date.text = "Дата: ${item.createdDate}"
+            holder.status.text = "Статус: ${item.status}"
+
+            holder.status.setTextColor(
+                when (item.status) {
+                    "Новая" -> Color.parseColor("#10B981")
+                    "Обработана" -> Color.parseColor("#2563EB")
+                    "Отклонена" -> Color.parseColor("#EF4444")
+                    else -> Color.parseColor("#374151")
+                }
+            )
+
+            holder.itemView.setOnClickListener {
+                onClick(item)
+            }
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        inner class ViewHolder(
+            view: View,
+            val title: TextView,
+            val date: TextView,
+            val status: TextView
+        ) : RecyclerView.ViewHolder(view)
+    }
+}
