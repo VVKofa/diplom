@@ -1,0 +1,31 @@
+package com.example.directionprogramm
+
+object UserRepository {
+
+    private val users = listOf(
+        User(
+            login = "admin",
+            password = "1234",
+            fullName = "Администратор",
+            role = "admin"
+        ),
+        User(
+            login = "manager",
+            password = "1234",
+            fullName = "Территориальный менеджер",
+            role = "manager"
+        ),
+        User(
+            login = "director",
+            password = "1234",
+            fullName = "Директор",
+            role = "director"
+        )
+    )
+
+    fun authenticate(login: String, password: String): User? {
+        return users.find { user ->
+            user.login == login && user.password == password
+        }
+    }
+}
