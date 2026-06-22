@@ -1,0 +1,317 @@
+package com.example.directionprogramm
+
+import android.app.DatePickerDialog
+import android.content.Intent
+import android.graphics.Color
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+
+class ManagerOrderHistoryActivity : AppCompatActivity() {
+
+    private lateinit var ordersRecycler: RecyclerView
+    private lateinit var emptyText: TextView
+    private lateinit var backButton: ImageButton
+    private lateinit var orderRepository: OrderRepository
+    private lateinit var ordersAdapter: ManagerHistoryAdapter
+
+    private lateinit var filterButton: ImageButton
+    private lateinit var filterLayout: LinearLayout
+    private lateinit var startDateInput: EditText
+    private lateinit var endDateInput: EditText
+    private lateinit var startCalendarButton: Button
+    private lateinit var endCalendarButton: Button
+    private lateinit var applyDateFilterButton: Button
+    private lateinit var clearDateFilterButton: Button
+
+    private var startDateMillis: Long? = null
+    private var endDateMillis: Long? = null
+
+    private val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_manager_order_history)
+
+        orderRepository = OrderRepository(this)
+
+        ordersRecycler = findViewById(R.id.ordersRecycler)
+        emptyText = findViewById(R.id.emptyText)
+        backButton = findViewById(R.id.backButtonOrderHistory)
+
+        filterButton = findViewById(R.id.filterButtonOrderHistory)
+        filterLayout = findViewById(R.id.filterLayoutOrderHistory)
+        startDateInput = findViewById(R.id.startDateInputOrderHistory)
+        endDateInput = findViewById(R.id.endDateInputOrderHistory)
+        startCalendarButton = findViewById(R.id.startCalendarButtonOrderHistory)
+        endCalendarButton = findViewById(R.id.endCalendarButtonOrderHistory)
+        applyDateFilterButton = findViewById(R.id.applyDateFilterButtonOrderHistory)
+        clearDateFilterButton = findViewById(R.id.clearDateFilterButtonOrderHistory)
+
+        ordersRecycler.layoutManager = LinearLayoutManager(this)
+
+        ordersAdapter = ManagerHistoryAdapter { order ->
+            val intent = Intent(this, OrderDetailsActivity::class.java)
+            intent.putExtra("order_id", order.id)
+            startActivity(intent)
+        }
+
+        ordersRecycler.adapter = ordersAdapter
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        filterButton.setOnClickListener {
+            filterLayout.visibility =
+                if (filterLayout.visibility == View.GONE) View.VISIBLE else View.GONE
+        }
+
+        startCalendarButton.setOnClickListener {
+            showDatePicker(isStartDate = true)
+        }
+
+        endCalendarButton.setOnClickListener {
+            showDatePicker(isStartDate = false)
+        }
+
+        applyDateFilterButton.setOnClickListener {
+            applyDateFilterFromInputs()
+        }
+
+        clearDateFilterButton.setOnClickListener {
+            startDateMillis = null
+            endDateMillis = null
+            startDateInput.setText("")
+            endDateInput.setText("")
+            loadOrders()
+        }
+
+        loadOrders()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadOrders()
+    }
+
+    private fun loadOrders() {
+        val managerOrders = orderRepository.getManagerHistory()
+            .filter { order ->
+                val orderDate = runCatching {
+                    dateFormat.parse(order.createdDate)?.time
+                }.getOrNull()
+
+                if (orderDate == null) {
+                    true
+                } else {
+                    val afterStart = startDateMillis?.let { orderDate >= it } ?: true
+                    val beforeEnd = endDateMillis?.let { orderDate <= it } ?: true
+                    afterStart && beforeEnd
+                }
+            }
+
+        if (managerOrders.isEmpty()) {
+            emptyText.visibility = View.VISIBLE
+            ordersRecycler.visibility = View.GONE
+            emptyText.text = "Нет заказов за выбранный период"
+        } else {
+            emptyText.visibility = View.GONE
+            ordersRecycler.visibility = View.VISIBLE
+            ordersAdapter.submitList(managerOrders)
+        }
+    }
+
+    private fun applyDateFilterFromInputs() {
+        val startText = startDateInput.text.toString().trim()
+        val endText = endDateInput.text.toString().trim()
+
+        startDateMillis = if (startText.isNotEmpty()) {
+            runCatching {
+                val date = dateFormat.parse(startText)
+                Calendar.getInstance().apply {
+                    time = date!!
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+            }.getOrNull()
+        } else {
+            null
+        }
+
+        endDateMillis = if (endText.isNotEmpty()) {
+            runCatching {
+                val date = dateFormat.parse(endText)
+                Calendar.getInstance().apply {
+                    time = date!!
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }.timeInMillis
+            }.getOrNull()
+        } else {
+            null
+        }
+
+        loadOrders()
+    }
+
+    private fun showDatePicker(isStartDate: Boolean) {
+        val calendar = Calendar.getInstance()
+
+        DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                val selectedCalendar = Calendar.getInstance().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, day)
+
+                    if (isStartDate) {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    } else {
+                        set(Calendar.HOUR_OF_DAY, 23)
+                        set(Calendar.MINUTE, 59)
+                        set(Calendar.SECOND, 59)
+                        set(Calendar.MILLISECOND, 999)
+                    }
+                }
+
+                val formattedDate = dateFormat.format(selectedCalendar.time)
+
+                if (isStartDate) {
+                    startDateMillis = selectedCalendar.timeInMillis
+                    startDateInput.setText(formattedDate)
+                } else {
+                    endDateMillis = selectedCalendar.timeInMillis
+                    endDateInput.setText(formattedDate)
+                }
+
+                loadOrders()
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    inner class ManagerHistoryAdapter(
+        private val onItemClick: (OrderModel) -> Unit
+    ) : RecyclerView.Adapter<ManagerHistoryAdapter.OrderViewHolder>() {
+
+        private val orders = mutableListOf<OrderModel>()
+
+        fun submitList(newOrders: List<OrderModel>) {
+            orders.clear()
+            orders.addAll(newOrders)
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): OrderViewHolder {
+            val cardView = CardView(parent.context).apply {
+                radius = 20f
+                cardElevation = 6f
+                useCompatPadding = true
+                layoutParams = RecyclerView.LayoutParams(
+                    RecyclerView.LayoutParams.MATCH_PARENT,
+                    RecyclerView.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    leftMargin = 12
+                    rightMargin = 12
+                    topMargin = 8
+                    bottomMargin = 8
+                }
+                setCardBackgroundColor(Color.WHITE)
+            }
+
+            val container = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(28, 24, 28, 24)
+            }
+
+            val titleText = TextView(parent.context).apply {
+                textSize = 19f
+                setTextColor(Color.parseColor("#1F2937"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            val dateText = TextView(parent.context).apply {
+                textSize = 15f
+                setTextColor(Color.parseColor("#374151"))
+                setPadding(0, 10, 0, 0)
+            }
+
+            val countText = TextView(parent.context).apply {
+                textSize = 15f
+                setTextColor(Color.parseColor("#374151"))
+                setPadding(0, 6, 0, 0)
+            }
+
+            val statusText = TextView(parent.context).apply {
+                textSize = 15f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setPadding(0, 8, 0, 0)
+            }
+
+            container.addView(titleText)
+            container.addView(dateText)
+            container.addView(countText)
+            container.addView(statusText)
+            cardView.addView(container)
+
+            return OrderViewHolder(cardView, titleText, dateText, countText, statusText)
+        }
+
+        override fun onBindViewHolder(holder: OrderViewHolder, position: Int) {
+            val order = orders[position]
+
+            holder.titleText.text = "Заказ №${order.id}"
+            holder.dateText.text = "Дата создания: ${order.createdDate}"
+            holder.countText.text = "Товаров: ${orderRepository.getTotalItemsCount(order)}"
+            holder.statusText.text = "Статус: ${order.status}"
+
+            holder.statusText.setTextColor(
+                when (order.status) {
+                    "Новая заявка" -> Color.parseColor("#10B981")
+                    "Подтверждена" -> Color.parseColor("#2563EB")
+                    "В обработке" -> Color.parseColor("#F59E0B")
+                    "Отклонена" -> Color.parseColor("#EF4444")
+                    "Создана администратором" -> Color.parseColor("#10B981")
+                    else -> Color.parseColor("#374151")
+                }
+            )
+
+            holder.itemView.setOnClickListener {
+                onItemClick(order)
+            }
+        }
+
+        override fun getItemCount(): Int = orders.size
+
+        inner class OrderViewHolder(
+            itemView: View,
+            val titleText: TextView,
+            val dateText: TextView,
+            val countText: TextView,
+            val statusText: TextView
+        ) : RecyclerView.ViewHolder(itemView)
+    }
+}
