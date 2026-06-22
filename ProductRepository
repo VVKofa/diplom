@@ -1,0 +1,84 @@
+package com.example.directionprogramm
+
+import android.content.Context
+import kotlinx.coroutines.runBlocking
+
+class ProductRepository(context: Context) {
+
+    private val db = AppDatabase.getDatabase(context.applicationContext)
+    private val prefs = context.getSharedPreferences("products_room_prefs", Context.MODE_PRIVATE)
+
+    companion object {
+        private const val PRODUCTS_INITIALIZED_KEY = "products_initialized"
+    }
+
+    fun getProducts(): MutableList<Product> = runBlocking {
+        seedDefaultProductsIfNeeded()
+        db.productDao().getAllProducts().toMutableList()
+    }
+
+    fun addProduct(name: String): Boolean = runBlocking {
+        seedDefaultProductsIfNeeded()
+
+        val cleanName = name.trim()
+        if (cleanName.isEmpty()) return@runBlocking false
+
+        val exists = db.productDao().getProductByName(cleanName) != null
+        if (exists) return@runBlocking false
+
+        db.productDao().insert(Product(name = cleanName))
+        true
+    }
+
+    fun updateProduct(oldName: String, newName: String): Boolean = runBlocking {
+        seedDefaultProductsIfNeeded()
+
+        val cleanName = newName.trim()
+        if (cleanName.isEmpty()) return@runBlocking false
+
+        val product = db.productDao().getProductByName(oldName) ?: return@runBlocking false
+
+        val duplicate = db.productDao().getProductByName(cleanName)
+
+        if (duplicate != null && duplicate.id != product.id) {
+            return@runBlocking false
+        }
+
+        db.productDao().update(
+            product.copy(name = cleanName)
+        )
+
+        true
+    }
+
+    fun deleteProduct(name: String) = runBlocking {
+        seedDefaultProductsIfNeeded()
+        db.productDao().deleteByName(name)
+    }
+
+    private suspend fun seedDefaultProductsIfNeeded() {
+        val alreadyInitialized = prefs.getBoolean(PRODUCTS_INITIALIZED_KEY, false)
+        val count = db.productDao().getProductsCount()
+
+        if (alreadyInitialized) return
+
+        if (count == 0) {
+            val defaultProducts = listOf(
+                Product(name = "Автошампунь"),
+                Product(name = "Воск"),
+                Product(name = "Очиститель стекол"),
+                Product(name = "Средство для дисков"),
+                Product(name = "Полироль салона"),
+                Product(name = "Губки"),
+                Product(name = "Микрофибра"),
+                Product(name = "Освежитель воздуха")
+            )
+
+            db.productDao().insertAll(defaultProducts)
+        }
+
+        prefs.edit()
+            .putBoolean(PRODUCTS_INITIALIZED_KEY, true)
+            .apply()
+    }
+}
