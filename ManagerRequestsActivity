@@ -1,0 +1,343 @@
+package com.example.directionprogramm
+
+import android.content.Intent
+import android.graphics.Color
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.CheckBox
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+
+class ManagerRequestsActivity : AppCompatActivity() {
+
+    private lateinit var requestsRecycler: RecyclerView
+    private lateinit var emptyText: TextView
+    private lateinit var backButton: ImageButton
+    private lateinit var createCombinedOrderButton: Button
+
+    private lateinit var requestRepository: RequestRepository
+    private lateinit var orderRepository: OrderRepository
+    private lateinit var notificationRepository: NotificationRepository
+    private lateinit var sessionManager: SessionManager
+    private lateinit var db: AppDatabase
+    private lateinit var adapter: RequestsAdapter
+
+    private val selectedRequestIds = mutableSetOf<Int>()
+    private val carWashMap = mutableMapOf<Int, CarWashEntity>()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_manager_requests)
+
+        requestRepository = RequestRepository(this)
+        orderRepository = OrderRepository(this)
+        notificationRepository = NotificationRepository(this)
+        sessionManager = SessionManager(this)
+        db = AppDatabase.getDatabase(this)
+
+        requestsRecycler = findViewById(R.id.requestsRecycler)
+        emptyText = findViewById(R.id.emptyTextManagerRequests)
+        backButton = findViewById(R.id.backButtonManagerRequests)
+        createCombinedOrderButton = findViewById(R.id.createCombinedOrderButton)
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        requestsRecycler.layoutManager = LinearLayoutManager(this)
+
+        adapter = RequestsAdapter(
+            onItemClick = { request ->
+                val intent = Intent(this, ManagerRequestDetailsActivity::class.java)
+                intent.putExtra("request_id", request.id)
+                startActivity(intent)
+            },
+            onCheckedChange = { requestId, isChecked ->
+                if (isChecked) {
+                    selectedRequestIds.add(requestId)
+                } else {
+                    selectedRequestIds.remove(requestId)
+                }
+
+                updateCreateButtonState()
+            }
+        )
+
+        requestsRecycler.adapter = adapter
+
+        createCombinedOrderButton.setOnClickListener {
+            if (selectedRequestIds.isEmpty()) {
+                Toast.makeText(this, "Выберите заявки", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            lifecycleScope.launch {
+                val selectedIds = selectedRequestIds.toList()
+                val selectedRequests = selectedIds.mapNotNull {
+                    requestRepository.getRequestById(it)
+                }
+
+                val order = orderRepository.createManagerOrderFromRequests(selectedIds)
+
+                if (order != null) {
+                    val requestsText = selectedIds.joinToString(", ") { "№$it" }
+
+                    notificationRepository.addNotification(
+                        userRole = "director",
+                        title = "Новая объединенная заявка",
+                        message = "Территориальный менеджер сформировал общий заказ по заявкам: $requestsText",
+                        orderId = order.id
+                    )
+
+                    selectedRequests.forEach { request ->
+                        notificationRepository.addNotification(
+                            userRole = "admin",
+                            carWashId = request.carWashId,
+                            title = "Заявка обработана",
+                            message = "Ваша заявка №${request.id} обработана территориальным менеджером",
+                            orderId = order.id,
+                            requestId = request.id
+                        )
+                    }
+
+                    Toast.makeText(
+                        this@ManagerRequestsActivity,
+                        "Общий заказ сформирован",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    selectedRequestIds.clear()
+                    updateCreateButtonState()
+
+                    startActivity(
+                        Intent(
+                            this@ManagerRequestsActivity,
+                            ManagerOrderHistoryActivity::class.java
+                        )
+                    )
+
+                    loadRequests()
+                } else {
+                    Toast.makeText(
+                        this@ManagerRequestsActivity,
+                        "Не удалось сформировать заказ",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+
+        updateCreateButtonState()
+        loadRequests()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadRequests()
+    }
+
+    private fun loadRequests() {
+        lifecycleScope.launch {
+            val managerName = sessionManager.getUserName()
+
+            if (managerName.isNullOrBlank()) {
+                emptyText.visibility = View.VISIBLE
+                requestsRecycler.visibility = View.GONE
+                emptyText.text = "Не удалось определить территориального менеджера"
+                return@launch
+            }
+
+            val managerCarWashes = db.carWashDao().getCarWashesByManager(managerName)
+            val managerCarWashIds = managerCarWashes.map { it.id }
+
+            if (managerCarWashIds.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                requestsRecycler.visibility = View.GONE
+                emptyText.text = "За этим менеджером пока не закреплены автомойки"
+                return@launch
+            }
+
+            val requests = requestRepository
+                .getAdminRequests()
+                .filter { request ->
+                    request.status != "Обработана" &&
+                            managerCarWashIds.contains(request.carWashId)
+                }
+                .sortedByDescending { it.id }
+
+            carWashMap.clear()
+
+            requests.forEach { request ->
+                val carWash = db.carWashDao().getCarWashById(request.carWashId)
+                if (carWash != null) {
+                    carWashMap[request.id] = carWash
+                }
+            }
+
+            if (requests.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                requestsRecycler.visibility = View.GONE
+                emptyText.text = "Заявок от закрепленных автомоек пока нет"
+            } else {
+                emptyText.visibility = View.GONE
+                requestsRecycler.visibility = View.VISIBLE
+                adapter.submitList(requests)
+            }
+        }
+    }
+
+    private fun updateCreateButtonState() {
+        createCombinedOrderButton.isEnabled = selectedRequestIds.isNotEmpty()
+        createCombinedOrderButton.alpha = if (selectedRequestIds.isNotEmpty()) 1f else 0.5f
+    }
+
+    inner class RequestsAdapter(
+        private val onItemClick: (RequestModel) -> Unit,
+        private val onCheckedChange: (Int, Boolean) -> Unit
+    ) : RecyclerView.Adapter<RequestsAdapter.RequestViewHolder>() {
+
+        private val items = mutableListOf<RequestModel>()
+
+        fun submitList(newItems: List<RequestModel>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RequestViewHolder {
+            val card = CardView(parent.context).apply {
+                radius = 20f
+                cardElevation = 6f
+                useCompatPadding = true
+                layoutParams = RecyclerView.LayoutParams(
+                    RecyclerView.LayoutParams.MATCH_PARENT,
+                    RecyclerView.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    leftMargin = 12
+                    rightMargin = 12
+                    topMargin = 8
+                    bottomMargin = 8
+                }
+                setCardBackgroundColor(Color.WHITE)
+            }
+
+            val container = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(24, 20, 24, 20)
+            }
+
+            val textContainer = LinearLayout(parent.context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    1f
+                )
+            }
+
+            val title = TextView(parent.context).apply {
+                textSize = 18f
+                setTextColor(Color.parseColor("#1F2937"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            val date = TextView(parent.context).apply {
+                textSize = 15f
+                setTextColor(Color.parseColor("#374151"))
+                setPadding(0, 8, 0, 0)
+            }
+
+            val status = TextView(parent.context).apply {
+                textSize = 15f
+                setPadding(0, 8, 0, 0)
+                setTextColor(Color.parseColor("#374151"))
+            }
+
+            val district = TextView(parent.context).apply {
+                textSize = 15f
+                setPadding(0, 8, 0, 0)
+                setTextColor(Color.parseColor("#2563EB"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            val carWashAddress = TextView(parent.context).apply {
+                textSize = 14f
+                setPadding(0, 6, 0, 0)
+                setTextColor(Color.parseColor("#6B7280"))
+            }
+
+            val checkBox = CheckBox(parent.context)
+
+            textContainer.addView(title)
+            textContainer.addView(date)
+            textContainer.addView(status)
+            textContainer.addView(district)
+            textContainer.addView(carWashAddress)
+
+            container.addView(textContainer)
+            container.addView(checkBox)
+
+            card.addView(container)
+
+            return RequestViewHolder(
+                card,
+                title,
+                date,
+                status,
+                district,
+                carWashAddress,
+                checkBox
+            )
+        }
+
+        override fun onBindViewHolder(holder: RequestViewHolder, position: Int) {
+            val item = items[position]
+            val carWash = carWashMap[item.id]
+
+            holder.title.text = "Заявка №${item.id}"
+            holder.date.text = "Дата создания: ${item.createdDate}"
+            holder.status.text = "Статус: ${item.status}"
+
+            if (carWash != null) {
+                holder.district.text = "Округ: ${carWash.district}"
+                holder.carWashAddress.text = "Автомойка: ${carWash.address}"
+            } else {
+                holder.district.text = "Округ: не найден"
+                holder.carWashAddress.text = "Автомойка: не найдена"
+            }
+
+            holder.checkBox.setOnCheckedChangeListener(null)
+            holder.checkBox.isChecked = selectedRequestIds.contains(item.id)
+
+            holder.checkBox.setOnCheckedChangeListener { _, isChecked ->
+                onCheckedChange(item.id, isChecked)
+            }
+
+            holder.itemView.setOnClickListener {
+                onItemClick(item)
+            }
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        inner class RequestViewHolder(
+            itemView: View,
+            val title: TextView,
+            val date: TextView,
+            val status: TextView,
+            val district: TextView,
+            val carWashAddress: TextView,
+            val checkBox: CheckBox
+        ) : RecyclerView.ViewHolder(itemView)
+    }
+}
