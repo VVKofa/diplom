@@ -1,0 +1,442 @@
+package com.example.directionprogramm
+
+import android.graphics.Color
+import android.os.Bundle
+import android.view.View
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.lifecycle.lifecycleScope
+import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.charts.PieChart
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import com.github.mikephil.charting.data.PieData
+import com.github.mikephil.charting.data.PieDataSet
+import com.github.mikephil.charting.data.PieEntry
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+class DirectorAnalyticsActivity : AppCompatActivity() {
+
+    private lateinit var backButton: ImageButton
+    private lateinit var emptyText: TextView
+
+    private lateinit var totalOrdersText: TextView
+    private lateinit var managersCountText: TextView
+    private lateinit var topManagerText: TextView
+    private lateinit var topMonthText: TextView
+
+    private lateinit var managerBarChart: BarChart
+    private lateinit var managerPieChart: PieChart
+    private lateinit var dayLineChart: LineChart
+    private lateinit var monthBarChart: BarChart
+
+    private lateinit var managerPieContainer: LinearLayout
+
+    private lateinit var orderRepository: OrderRepository
+    private lateinit var db: AppDatabase
+
+    private val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    private val monthFormat = SimpleDateFormat("MM.yyyy", Locale.getDefault())
+
+    private val chartColors = listOf(
+        Color.parseColor("#2563EB"),
+        Color.parseColor("#1ABC9C"),
+        Color.parseColor("#F59E0B"),
+        Color.parseColor("#10B981"),
+        Color.parseColor("#8B5CF6"),
+        Color.parseColor("#6B7280")
+    )
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_director_analytics)
+
+        orderRepository = OrderRepository(this)
+        db = AppDatabase.getDatabase(this)
+
+        initViews()
+        setupClicks()
+        loadAnalytics()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        loadAnalytics()
+    }
+
+    private fun initViews() {
+        backButton = findViewById(R.id.backButtonDirectorAnalytics)
+        emptyText = findViewById(R.id.emptyDirectorAnalyticsText)
+
+        totalOrdersText = findViewById(R.id.totalOrdersText)
+        managersCountText = findViewById(R.id.managersCountText)
+        topManagerText = findViewById(R.id.topManagerText)
+        topMonthText = findViewById(R.id.topMonthText)
+
+        managerBarChart = findViewById(R.id.managerBarChart)
+        managerPieChart = findViewById(R.id.managerPieChart)
+        dayLineChart = findViewById(R.id.dayLineChart)
+        monthBarChart = findViewById(R.id.monthBarChart)
+
+        managerPieContainer = findViewById(R.id.managerPieContainer)
+    }
+
+    private fun setupClicks() {
+        backButton.setOnClickListener {
+            finish()
+        }
+    }
+
+    private fun loadAnalytics() {
+        lifecycleScope.launch {
+            val orders = orderRepository.getAllOrders()
+                .filter { it.createdByRole == "territorial_manager" }
+
+            val carWashes = db.carWashDao().getAllCarWashes()
+            val carWashMap = carWashes.associateBy { it.id }
+
+            if (orders.isEmpty()) {
+                emptyText.visibility = View.VISIBLE
+                clearCharts()
+                return@launch
+            }
+
+            emptyText.visibility = View.GONE
+
+            setupTopCards(orders, carWashMap)
+            setupManagerBarChart(orders, carWashMap)
+            setupManagerPieChart(orders, carWashMap)
+            setupDayLineChart(orders)
+            setupMonthBarChart(orders)
+            setupPersonalManagerPieCharts(orders, carWashMap)
+        }
+    }
+
+    private fun setupTopCards(
+        orders: List<OrderModel>,
+        carWashMap: Map<Int, CarWashEntity>
+    ) {
+        val managerCounts = orders.groupBy { getManagerName(it, carWashMap) }
+            .mapValues { it.value.size }
+
+        val topManager = managerCounts.maxByOrNull { it.value }
+
+        val monthCounts = orders.groupBy { getMonthLabel(it.createdDate) }
+            .mapValues { it.value.size }
+            .filterKeys { it != "Дата не указана" }
+
+        val topMonth = monthCounts.maxByOrNull { it.value }
+
+        totalOrdersText.text = orders.size.toString()
+        managersCountText.text = managerCounts.size.toString()
+        topManagerText.text = topManager?.let { "${it.key}\n${it.value} заявок" } ?: "Нет данных"
+        topMonthText.text = topMonth?.let { "${it.key}\n${it.value} заявок" } ?: "Нет данных"
+    }
+
+    private fun setupManagerBarChart(
+        orders: List<OrderModel>,
+        carWashMap: Map<Int, CarWashEntity>
+    ) {
+        val grouped = orders.groupBy { getManagerName(it, carWashMap) }
+            .mapValues { it.value.size }
+            .toList()
+            .sortedByDescending { it.second }
+
+        val labels = grouped.map { it.first }
+        val entries = grouped.mapIndexed { index, item ->
+            BarEntry(index.toFloat(), item.second.toFloat())
+        }
+
+        if (entries.isEmpty()) {
+            managerBarChart.clear()
+            managerBarChart.invalidate()
+            return
+        }
+
+        val dataSet = BarDataSet(entries, "Заявки менеджеров").apply {
+            colors = entries.indices.map { chartColors[it % chartColors.size] }
+            valueTextColor = Color.parseColor("#1F2937")
+            valueTextSize = 11f
+        }
+
+        managerBarChart.data = BarData(dataSet).apply {
+            barWidth = 0.55f
+        }
+
+        setupCommonBarChart(managerBarChart, labels)
+    }
+
+    private fun setupManagerPieChart(
+        orders: List<OrderModel>,
+        carWashMap: Map<Int, CarWashEntity>
+    ) {
+        val grouped = orders.groupBy { getManagerName(it, carWashMap) }
+            .mapValues { it.value.size }
+            .toList()
+            .sortedByDescending { it.second }
+
+        val entries = grouped.map { item ->
+            PieEntry(item.second.toFloat(), item.first)
+        }
+
+        setupPieChart(
+            chart = managerPieChart,
+            entries = entries,
+            centerText = "${orders.size}\nзаявок"
+        )
+    }
+
+    private fun setupDayLineChart(orders: List<OrderModel>) {
+        val grouped = orders.groupBy { it.createdDate }
+            .toSortedMap(compareBy {
+                runCatching { dateFormat.parse(it)?.time }.getOrNull() ?: 0L
+            })
+
+        val labels = grouped.keys.toList()
+
+        val entries = labels.mapIndexed { index, date ->
+            Entry(index.toFloat(), grouped[date]?.size?.toFloat() ?: 0f)
+        }
+
+        if (entries.isEmpty()) {
+            dayLineChart.clear()
+            dayLineChart.invalidate()
+            return
+        }
+
+        val dataSet = LineDataSet(entries, "Заявки по дням").apply {
+            color = Color.parseColor("#2563EB")
+            setCircleColor(Color.parseColor("#2563EB"))
+            lineWidth = 3f
+            circleRadius = 4f
+            valueTextSize = 11f
+            valueTextColor = Color.parseColor("#1F2937")
+            mode = LineDataSet.Mode.CUBIC_BEZIER
+        }
+
+        dayLineChart.data = LineData(dataSet)
+        dayLineChart.description.isEnabled = false
+        dayLineChart.legend.textColor = Color.parseColor("#374151")
+        dayLineChart.setScaleEnabled(false)
+
+        dayLineChart.xAxis.apply {
+            valueFormatter = IndexAxisValueFormatter(labels)
+            position = XAxis.XAxisPosition.BOTTOM
+            granularity = 1f
+            labelRotationAngle = -35f
+            textColor = Color.parseColor("#374151")
+            setDrawGridLines(false)
+        }
+
+        dayLineChart.axisLeft.apply {
+            axisMinimum = 0f
+            granularity = 1f
+            textColor = Color.parseColor("#374151")
+        }
+
+        dayLineChart.axisRight.isEnabled = false
+        dayLineChart.invalidate()
+    }
+
+    private fun setupMonthBarChart(orders: List<OrderModel>) {
+        val grouped = orders.groupBy { getMonthLabel(it.createdDate) }
+            .filterKeys { it != "Дата не указана" }
+            .toSortedMap(compareBy {
+                runCatching { monthFormat.parse(it)?.time }.getOrNull() ?: 0L
+            })
+
+        val labels = grouped.keys.toList()
+
+        val entries = labels.mapIndexed { index, month ->
+            BarEntry(index.toFloat(), grouped[month]?.size?.toFloat() ?: 0f)
+        }
+
+        if (entries.isEmpty()) {
+            monthBarChart.clear()
+            monthBarChart.invalidate()
+            return
+        }
+
+        val dataSet = BarDataSet(entries, "Заявки по месяцам").apply {
+            color = Color.parseColor("#1ABC9C")
+            valueTextColor = Color.parseColor("#1F2937")
+            valueTextSize = 11f
+        }
+
+        monthBarChart.data = BarData(dataSet).apply {
+            barWidth = 0.55f
+        }
+
+        setupCommonBarChart(monthBarChart, labels)
+    }
+
+    private fun setupPersonalManagerPieCharts(
+        orders: List<OrderModel>,
+        carWashMap: Map<Int, CarWashEntity>
+    ) {
+        managerPieContainer.removeAllViews()
+
+        val groupedByManager = orders.groupBy { getManagerName(it, carWashMap) }
+            .toList()
+            .sortedBy { it.first }
+
+        groupedByManager.forEach { managerGroup ->
+            val managerName = managerGroup.first
+            val managerOrders = managerGroup.second
+
+            val statusEntries = managerOrders
+                .groupBy { it.status }
+                .mapValues { it.value.size }
+                .map { PieEntry(it.value.toFloat(), it.key) }
+
+            val card = CardView(this).apply {
+                radius = 22f
+                cardElevation = 5f
+                useCompatPadding = true
+                setCardBackgroundColor(Color.WHITE)
+
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 14.dp()
+                }
+            }
+
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(18.dp(), 16.dp(), 18.dp(), 16.dp())
+            }
+
+            val title = TextView(this).apply {
+                text = managerName
+                textSize = 16f
+                setTextColor(Color.parseColor("#1F2937"))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+
+            val subtitle = TextView(this).apply {
+                text = "Всего заявок: ${managerOrders.size}"
+                textSize = 13f
+                setTextColor(Color.parseColor("#6B7280"))
+                setPadding(0, 5.dp(), 0, 0)
+            }
+
+            val pieChart = PieChart(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    290.dp()
+                ).apply {
+                    topMargin = 10.dp()
+                }
+            }
+
+            container.addView(title)
+            container.addView(subtitle)
+            container.addView(pieChart)
+
+            card.addView(container)
+            managerPieContainer.addView(card)
+
+            setupPieChart(
+                chart = pieChart,
+                entries = statusEntries,
+                centerText = "${managerOrders.size}\nзаявок"
+            )
+        }
+    }
+
+    private fun setupPieChart(
+        chart: PieChart,
+        entries: List<PieEntry>,
+        centerText: String
+    ) {
+        if (entries.isEmpty()) {
+            chart.clear()
+            chart.invalidate()
+            return
+        }
+
+        val dataSet = PieDataSet(entries, "").apply {
+            colors = entries.indices.map { chartColors[it % chartColors.size] }
+            valueTextColor = Color.WHITE
+            valueTextSize = 13f
+            sliceSpace = 3f
+        }
+
+        chart.data = PieData(dataSet)
+        chart.description.isEnabled = false
+        chart.centerText = centerText
+        chart.setCenterTextSize(17f)
+        chart.setCenterTextColor(Color.parseColor("#1F2937"))
+        chart.holeRadius = 58f
+        chart.transparentCircleRadius = 62f
+        chart.legend.textColor = Color.parseColor("#374151")
+        chart.setEntryLabelColor(Color.parseColor("#1F2937"))
+        chart.setUsePercentValues(false)
+        chart.invalidate()
+    }
+
+    private fun setupCommonBarChart(chart: BarChart, labels: List<String>) {
+        chart.description.isEnabled = false
+        chart.legend.textColor = Color.parseColor("#374151")
+        chart.setFitBars(true)
+        chart.setScaleEnabled(false)
+
+        chart.xAxis.apply {
+            valueFormatter = IndexAxisValueFormatter(labels)
+            position = XAxis.XAxisPosition.BOTTOM
+            granularity = 1f
+            labelRotationAngle = -35f
+            textColor = Color.parseColor("#374151")
+            setDrawGridLines(false)
+        }
+
+        chart.axisLeft.apply {
+            axisMinimum = 0f
+            granularity = 1f
+            textColor = Color.parseColor("#374151")
+        }
+
+        chart.axisRight.isEnabled = false
+        chart.invalidate()
+    }
+
+    private fun getManagerName(
+        order: OrderModel,
+        carWashMap: Map<Int, CarWashEntity>
+    ): String {
+        return carWashMap[order.carWashId]?.managerName ?: "Менеджер не указан"
+    }
+
+    private fun getMonthLabel(dateText: String): String {
+        return runCatching {
+            val date = dateFormat.parse(dateText)
+            if (date != null) monthFormat.format(date) else "Дата не указана"
+        }.getOrDefault("Дата не указана")
+    }
+
+    private fun clearCharts() {
+        managerBarChart.clear()
+        managerPieChart.clear()
+        dayLineChart.clear()
+        monthBarChart.clear()
+        managerPieContainer.removeAllViews()
+    }
+
+    private fun Int.dp(): Int {
+        return (this * resources.displayMetrics.density).toInt()
+    }
+}
