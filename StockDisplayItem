@@ -1,0 +1,10 @@
+package com.example.directionprogramm
+
+data class StockDisplayItem(
+    val carWashAddress: String,
+    val district: String,
+    val productName: String,
+    val quantity: Int,
+    val minQuantity: Int,
+    val unit: String
+)
