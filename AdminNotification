@@ -1,0 +1,9 @@
+package com.example.directionprogramm
+
+data class AdminNotification(
+    val id: Long,
+    val orderId: Int,
+    val message: String,
+    val timestamp: Long,
+    var isRead: Boolean = false
+)
