@@ -1,0 +1,9 @@
+package com.example.directionprogramm
+
+object CartManager {
+    val cartItems = mutableListOf<CartItem>()
+
+    fun getTotalCount(): Int {
+        return cartItems.sumOf { it.quantity }
+    }
+}
