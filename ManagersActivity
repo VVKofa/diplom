@@ -1,0 +1,190 @@
+package com.example.directionprogramm
+
+import android.os.Bundle
+import android.view.View
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+
+class ManagersActivity : AppCompatActivity() {
+
+    private lateinit var db: AppDatabase
+    private lateinit var adapter: AccountAdapter
+
+    private lateinit var backButton: ImageView
+    private lateinit var titleText: TextView
+    private lateinit var subtitleText: TextView
+    private lateinit var addButton: Button
+    private lateinit var accountsRecyclerView: RecyclerView
+    private lateinit var emptyText: TextView
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_accounts_list)
+
+        db = AppDatabase.getDatabase(this)
+
+        initViews()
+        setupScreen()
+        setupRecyclerView()
+        loadManagers()
+    }
+
+    private fun initViews() {
+        backButton = findViewById(R.id.backButton)
+        titleText = findViewById(R.id.titleText)
+        subtitleText = findViewById(R.id.subtitleText)
+        addButton = findViewById(R.id.addButton)
+        accountsRecyclerView = findViewById(R.id.accountsRecyclerView)
+        emptyText = findViewById(R.id.emptyText)
+    }
+
+    private fun setupScreen() {
+        titleText.text = "Территориальные менеджеры"
+        subtitleText.text = "Добавление, редактирование и управление статусом"
+        addButton.text = "+ Добавить менеджера"
+
+        backButton.setOnClickListener {
+            finish()
+        }
+
+        addButton.setOnClickListener {
+            showManagerDialog(null)
+        }
+    }
+
+    private fun setupRecyclerView() {
+        adapter = AccountAdapter(
+            users = emptyList(),
+            isAdminList = false,
+            onEditClick = { user ->
+                showManagerDialog(user)
+            },
+            onStatusClick = { user ->
+                toggleStatus(user)
+            }
+        )
+
+        accountsRecyclerView.layoutManager = LinearLayoutManager(this)
+        accountsRecyclerView.adapter = adapter
+    }
+
+    private fun loadManagers() {
+        lifecycleScope.launch {
+            val managers = db.userDao().getAllManagers()
+            adapter.updateData(managers)
+            emptyText.visibility = if (managers.isEmpty()) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun toggleStatus(user: User) {
+        lifecycleScope.launch {
+            val newStatus = !user.isActive
+            db.userDao().updateUserActiveStatus(user.id, newStatus)
+
+            val message = if (newStatus) {
+                "Аккаунт снова активен"
+            } else {
+                "Аккаунт помечен как неактивный"
+            }
+
+            Toast.makeText(this@ManagersActivity, message, Toast.LENGTH_SHORT).show()
+            loadManagers()
+        }
+    }
+
+    private fun showManagerDialog(user: User?) {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_account, null)
+
+        val dialogTitleText = dialogView.findViewById<TextView>(R.id.dialogTitleText)
+        val fullNameInput = dialogView.findViewById<EditText>(R.id.fullNameInput)
+        val loginInput = dialogView.findViewById<EditText>(R.id.loginInput)
+        val passwordInput = dialogView.findViewById<EditText>(R.id.passwordInput)
+        val territoryInput = dialogView.findViewById<EditText>(R.id.territoryInput)
+        val carWashInput = dialogView.findViewById<EditText>(R.id.carWashInput)
+
+        territoryInput.visibility = View.GONE
+        carWashInput.visibility = View.GONE
+
+        if (user == null) {
+            dialogTitleText.text = "Добавить менеджера"
+        } else {
+            dialogTitleText.text = "Редактировать менеджера"
+            fullNameInput.setText(user.fullName)
+            loginInput.setText(user.login)
+            passwordInput.setText(user.password)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .create()
+
+        dialogView.findViewById<Button>(R.id.cancelButton).setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialogView.findViewById<Button>(R.id.saveButton).setOnClickListener {
+            val fullName = fullNameInput.text.toString().trim()
+            val login = loginInput.text.toString().trim()
+            val password = passwordInput.text.toString().trim()
+
+            if (fullName.isEmpty() || login.isEmpty() || password.isEmpty()) {
+                Toast.makeText(this, "Заполните ФИО, логин и пароль", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            lifecycleScope.launch {
+                val loginExists = if (user == null) {
+                    db.userDao().getUserByLogin(login) != null
+                } else {
+                    db.userDao().getAnotherUserByLogin(login, user.id) != null
+                }
+
+                if (loginExists) {
+                    Toast.makeText(
+                        this@ManagersActivity,
+                        "Такой логин уже существует",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@launch
+                }
+
+                if (user == null) {
+                    db.userDao().insert(
+                        User(
+                            login = login,
+                            password = password,
+                            role = "manager",
+                            fullName = fullName,
+                            carWashId = null,
+                            isActive = true
+                        )
+                    )
+                } else {
+                    db.userDao().update(
+                        user.copy(
+                            login = login,
+                            password = password,
+                            fullName = fullName
+                        )
+                    )
+                }
+
+                Toast.makeText(this@ManagersActivity, "Данные сохранены", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+                loadManagers()
+            }
+        }
+
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+    }
+}
