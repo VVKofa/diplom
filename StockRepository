@@ -1,0 +1,74 @@
+package com.example.directionprogramm
+
+import android.content.Context
+
+class StockRepository(
+    private val context: Context,
+    private val db: AppDatabase
+) {
+
+    private val productRepository = ProductRepository(context)
+
+    suspend fun seedStocksIfNeeded() {
+        val count = db.stockDao().getStocksCount()
+
+        if (count > 0) return
+
+        val carWashes = db.carWashDao().getAllCarWashes()
+        val products = productRepository.getProducts()
+
+        val productNames = if (products.isNotEmpty()) {
+            products.map { it.name }
+        } else {
+            listOf(
+                "Автошампунь",
+                "Воск",
+                "Очиститель стекол",
+                "Средство для дисков",
+                "Полироль салона",
+                "Губки",
+                "Микрофибра",
+                "Освежитель воздуха"
+            )
+        }
+
+        val stocks = mutableListOf<StockEntity>()
+
+        carWashes.forEach { carWash ->
+            productNames.forEachIndexed { index, productName ->
+
+                val unit = when {
+                    productName.contains("губ", ignoreCase = true) -> "шт"
+                    productName.contains("микрофиб", ignoreCase = true) -> "шт"
+                    productName.contains("освеж", ignoreCase = true) -> "шт"
+                    else -> "л"
+                }
+
+                val quantity = when (index % 6) {
+                    0 -> 18
+                    1 -> 7
+                    2 -> 10
+                    3 -> 6
+                    4 -> 4
+                    else -> 25
+                }
+
+                val minQuantity = if (unit == "шт") 10 else 4
+
+                stocks.add(
+                    StockEntity(
+                        carWashId = carWash.id,
+                        productName = productName,
+                        quantity = quantity,
+                        minQuantity = minQuantity,
+                        unit = unit
+                    )
+                )
+            }
+        }
+
+        if (stocks.isNotEmpty()) {
+            db.stockDao().insertAll(stocks)
+        }
+    }
+}
